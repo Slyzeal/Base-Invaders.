@@ -1,96 +1,98 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createPublicClient, http, parseAbi } from "viem";
-import { base } from "viem/chains";
 
-// ── PASTE YOUR CONTRACT ADDRESS HERE AFTER DEPLOYING ──────────────────────────
+// ── Contract config ───────────────────────────────────────────────────────────
 const CONTRACT_ADDRESS = "0xb58f8A10D8C20f461637426fF8b968f95D1DfF78";
+const BASE_RPC = "https://mainnet.base.org";
 
-const CONTRACT_ABI = parseAbi([
-  "function submitScore(uint256 score, string calldata basename) external",
-  "function getScore(address wallet) external view returns (tuple(address wallet, uint256 score, uint256 timestamp, string basename))",
-  "function getTopScores() external view returns (tuple(address wallet, uint256 score, uint256 timestamp, string basename)[])",
-  "function canSubmit(address wallet) external view returns (bool, uint256)",
-  "function paused() external view returns (bool)",
-]);
+// ── Read from contract (no wallet needed) ─────────────────────────────────────
+async function rpcCall(method, params) {
+  const res = await fetch(BASE_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message);
+  return json.result;
+}
 
-// ── Public client to READ from Base (no wallet needed for reads) ──────────────
-const publicClient = createPublicClient({
-  chain: base,
-  transport: http("https://mainnet.base.org"),
-});
+function encodeCall(sig, ...args) {
+  const selector = sig.slice(0, 10);
+  return selector + args.map(a => a.toString(16).padStart(64, "0")).join("");
+}
 
-// ── Write to contract via window.ethereum ─────────────────────────────────────
+async function getOnchainLeaderboard() {
+  try {
+    // getTopScores() selector
+    const data = await rpcCall("eth_call", [{
+      to: CONTRACT_ADDRESS,
+      data: "0x0a6a7cfd"
+    }, "latest"]);
+    return decodeLeaderboard(data);
+  } catch (e) { console.error(e); return []; }
+}
+
+async function getOnchainBest(wallet) {
+  try {
+    const addr = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
+    const data = await rpcCall("eth_call", [{
+      to: CONTRACT_ADDRESS,
+      data: "0xe2ec6ec3" + addr
+    }, "latest"]);
+    if (!data || data === "0x") return 0;
+    const score = parseInt(data.slice(66, 130), 16);
+    return isNaN(score) ? 0 : score;
+  } catch { return 0; }
+}
+
+function decodeLeaderboard(hex) {
+  try {
+    if (!hex || hex === "0x" || hex.length < 10) return [];
+    const data = hex.slice(2);
+    const count = parseInt(data.slice(64, 128), 16);
+    if (!count || count > 50) return [];
+    const entries = [];
+    for (let i = 0; i < count; i++) {
+      const base = 128 + i * 192;
+      const wallet = "0x" + data.slice(base + 24, base + 64);
+      const score = parseInt(data.slice(base + 64, base + 128), 16);
+      if (score > 0) entries.push({ wallet, score, basename: null });
+    }
+    return entries.sort((a, b) => b.score - a.score);
+  } catch { return []; }
+}
+
 async function submitScoreOnchain(score, basename) {
   if (!window.ethereum) throw new Error("No wallet found");
   const accounts = await window.ethereum.request({ method: "eth_accounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
-  // Encode function call
-  const { encodeFunctionData } = await import("viem");
-  const data = encodeFunctionData({
-    abi: CONTRACT_ABI,
-    functionName: "submitScore",
-    args: [BigInt(score), basename || ""],
-  });
+  // submitScore(uint256,string) selector = 0x9ead7222
+  const scoreHex = score.toString(16).padStart(64, "0");
+  const offsetHex = (64).toString(16).padStart(64, "0");
+  const name = basename || "";
+  const nameBytes = Array.from(new TextEncoder().encode(name));
+  const nameLen = nameBytes.length.toString(16).padStart(64, "0");
+  const nameHex = nameBytes.map(b => b.toString(16).padStart(2, "0")).join("").padEnd(64, "0");
+  const calldata = "0x9ead7222" + scoreHex + offsetHex + nameLen + nameHex;
 
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
       from: accounts[0],
       to: CONTRACT_ADDRESS,
-      data,
-      chainId: "0x2105", // Base mainnet = 8453
+      data: calldata,
+      chainId: "0x2105",
     }],
   });
   return txHash;
 }
 
-async function getOnchainLeaderboard() {
-  try {
-    const entries = await publicClient.readContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "getTopScores",
-    });
-    return entries.map(e => ({
-      wallet: e.wallet,
-      score: Number(e.score),
-      basename: e.basename || null,
-      timestamp: Number(e.timestamp),
-    }));
-  } catch { return []; }
-}
-
-async function getOnchainBest(wallet) {
-  try {
-    const entry = await publicClient.readContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "getScore",
-      args: [wallet],
-    });
-    return Number(entry.score) || 0;
-  } catch { return 0; }
-}
-
-async function checkCanSubmit(wallet) {
-  try {
-    const [can, wait] = await publicClient.readContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "canSubmit",
-      args: [wallet],
-    });
-    return { can, wait: Number(wait) };
-  } catch { return { can: true, wait: 0 }; }
-}
-
-// ── localStorage fallback for personal best only ──────────────────────────────
 function getLocalBest(w) {
-  try { return parseInt(localStorage.getItem(`bb:${w}`) || "0"); } catch { return 0; }
+  try { return parseInt(localStorage.getItem(`bb2:${w}`) || "0"); } catch { return 0; }
 }
 function setLocalBest(w, s) {
-  try { if (s > getLocalBest(w)) localStorage.setItem(`bb:${w}`, String(s)); } catch {}
+  try { if (s > getLocalBest(w)) localStorage.setItem(`bb2:${w}`, String(s)); } catch {}
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -134,7 +136,7 @@ async function resolveBasename(address) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   WEB AUDIO ENGINE
+   AUDIO ENGINE
 ═══════════════════════════════════════════════════════════ */
 class AudioEngine {
   constructor() {
@@ -240,10 +242,20 @@ const audio = new AudioEngine();
    STARS & PALETTES
 ═══════════════════════════════════════════════════════════ */
 function genStars(n = 140) {
-  return Array.from({ length: n }, (_, i) => ({ x: rand(0, W), y: rand(0, H), r: rand(.2, i % 25 === 0 ? 2.8 : i % 7 === 0 ? 1.6 : .9), a: rand(.1, .95), speed: rand(.08, .55), color: i % 18 === 0 ? "#a8d8ff" : i % 9 === 0 ? "#ffeedd" : "#fff", tw: rand(0, Math.PI * 2) }));
+  return Array.from({ length: n }, (_, i) => ({
+    x: rand(0, W), y: rand(0, H),
+    r: rand(.2, i % 25 === 0 ? 2.8 : i % 7 === 0 ? 1.6 : .9),
+    a: rand(.1, .95), speed: rand(.08, .55),
+    color: i % 18 === 0 ? "#a8d8ff" : i % 9 === 0 ? "#ffeedd" : "#fff",
+    tw: rand(0, Math.PI * 2)
+  }));
 }
 function drawStars(ctx, stars, scroll, phase) {
-  stars.forEach(s => { const y = ((s.y + scroll * s.speed) % H + H) % H; ctx.globalAlpha = s.a * (.65 + .35 * Math.sin(phase * 1.4 + s.tw)); ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI * 2); ctx.fill(); });
+  stars.forEach(s => {
+    const y = ((s.y + scroll * s.speed) % H + H) % H;
+    ctx.globalAlpha = s.a * (.65 + .35 * Math.sin(phase * 1.4 + s.tw));
+    ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI * 2); ctx.fill();
+  });
   ctx.globalAlpha = 1;
 }
 
@@ -261,12 +273,12 @@ const PALETTES = [
 ];
 
 /* ═══════════════════════════════════════════════════════════
-   DRAW FUNCTIONS (alien, ship, bullets, fruits, particles)
+   DRAW FUNCTIONS
 ═══════════════════════════════════════════════════════════ */
 function drawAlien(ctx, x, y, phase, frozen, wave) {
   ctx.save(); ctx.translate(x + 18, y + 18);
   const palIdx = (wave - 1) % PALETTES.length;
-  const [c0, c1, c2, cEye, glowRGB, accRGB] = frozen ? ["#aaffee","#33ccbb","#003344","#ffffff","160,255,240","100,255,220"] : PALETTES[palIdx];
+  const [c0,c1,c2,cEye,glowRGB,accRGB] = frozen ? ["#aaffee","#33ccbb","#003344","#ffffff","160,255,240","100,255,220"] : PALETTES[palIdx];
   ctx.translate(0, Math.sin(phase * 2.2) * 2);
   ctx.save(); ctx.globalAlpha = .17 + Math.sin(phase * 3) * .06;
   const h = ctx.createRadialGradient(0,0,8,0,0,28); h.addColorStop(0,`rgba(${glowRGB},.9)`); h.addColorStop(1,"transparent");
@@ -444,19 +456,15 @@ function drawHUD(ctx,g,now) {
     if(alive){ctx.shadowColor="#3399ff"; ctx.shadowBlur=10;}
     ctx.fillStyle="#fff"; ctx.font="bold 12px sans-serif"; ctx.textAlign="center"; ctx.fillText("^",26+i*26,40); ctx.restore();
   }
-  // Score next to lives
   ctx.font="700 8px sans-serif"; ctx.textAlign="left"; ctx.fillStyle="rgba(120,175,255,.55)"; ctx.fillText("SCORE",98,22);
   if(g.mult>1){ctx.shadowColor="#ffd700"; ctx.shadowBlur=20;}
   ctx.font="900 22px sans-serif"; ctx.textAlign="left"; ctx.fillStyle=g.mult>1?"#ffd700":"#ffffff";
   ctx.fillText(g.score.toLocaleString(),98,46); ctx.shadowBlur=0;
-  // Wave badge centre
   ctx.fillStyle="rgba(0,70,210,.2)"; rRect(ctx,W/2-32,13,64,40,8); ctx.fill();
   ctx.strokeStyle="rgba(0,110,255,.22)"; ctx.lineWidth=1; rRect(ctx,W/2-32,13,64,40,8); ctx.stroke();
   ctx.font="600 8px sans-serif"; ctx.textAlign="center"; ctx.fillStyle="rgba(100,160,255,.55)"; ctx.fillText("WAVE",W/2,26);
   ctx.font="800 20px sans-serif"; ctx.fillStyle="#aaccff"; ctx.fillText(String(g.wave),W/2,46);
-  // Laser ready
   if(g.laserStored){ctx.font="700 8px sans-serif"; ctx.textAlign="right"; ctx.fillStyle="rgba(255,120,40,.8)"; ctx.fillText("LASER READY",W-18,22);}
-  // Progress bar
   const prog=(g.kills%KILLS_PER_WAVE)/KILLS_PER_WAVE;
   ctx.fillStyle="rgba(0,55,150,.3)"; rRect(ctx,8,68,W-16,7,3.5); ctx.fill();
   if(prog>0){const pg=ctx.createLinearGradient(8,0,8+(W-16)*prog,0); pg.addColorStop(0,"#0055ff"); pg.addColorStop(1,"#00ccff"); ctx.fillStyle=pg; rRect(ctx,8,68,(W-16)*prog,7,3.5); ctx.fill();}
@@ -486,23 +494,13 @@ export default function App() {
     if (!window.ethereum) { setWalletError("No wallet found. Open in Coinbase Wallet."); return; }
     setConnecting(true);
     try {
-      // Switch to Base mainnet
       try {
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: "0x2105" }],
-        });
+        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
       } catch (switchErr) {
         if (switchErr.code === 4902) {
           await window.ethereum.request({
             method: "wallet_addEthereumChain",
-            params: [{
-              chainId: "0x2105",
-              chainName: "Base",
-              nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-              rpcUrls: ["https://mainnet.base.org"],
-              blockExplorerUrls: ["https://basescan.org"],
-            }],
+            params: [{ chainId: "0x2105", chainName: "Base", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://mainnet.base.org"], blockExplorerUrls: ["https://basescan.org"] }]
           });
         }
       }
@@ -523,7 +521,7 @@ export default function App() {
   useEffect(() => {
     if (!window.ethereum) return;
     const handler = (accounts) => {
-      if (accounts[0]) { const addr = accounts[0]; resolveBasename(addr).then(bn => setBasename(bn||"")); setWallet(addr); }
+      if (accounts[0]) { const addr = accounts[0]; resolveBasename(addr).then(bn => setBasename(bn || "")); setWallet(addr); }
       else { setWallet(""); setBasename(""); }
     };
     window.ethereum.on("accountsChanged", handler);
@@ -628,7 +626,7 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
           <div style={{marginBottom:12}}>
             <div style={{fontSize:8,letterSpacing:2,color:"rgba(100,150,255,.45)",marginBottom:10,textAlign:"center",fontFamily:"'Rajdhani',sans-serif",lineHeight:1.8}}>
               CONNECT BASE WALLET TO SAVE SCORES ONCHAIN<br/>
-              <span style={{color:"rgba(80,120,200,.35)",fontSize:7}}>SCORES STORED ON BASE BLOCKCHAIN · GLOBAL LEADERBOARD</span>
+              <span style={{color:"rgba(80,120,200,.35)",fontSize:7}}>GLOBAL LEADERBOARD · STORED ON BASE BLOCKCHAIN</span>
             </div>
             <button className="btn-p" onClick={connect} disabled={connecting} style={{animation:"glow-p 2.5s ease-in-out infinite"}}>
               {connecting?"CONNECTING...":"⚡  Connect Base Wallet"}
@@ -806,7 +804,7 @@ function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic}) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GAME OVER — with onchain save button
+   GAME OVER
 ═══════════════════════════════════════════════════════════ */
 function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusic}) {
   const isNew=score>0&&score>=best;
@@ -819,15 +817,12 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
     if(!wallet){setSaveError("Connect wallet first"); return;}
     setSaving(true); setSaveError("");
     try {
-      // Check rate limit
-      const {can,wait}=await checkCanSubmit(wallet);
-      if(!can){setSaveError(`Rate limited. Try again in ${Math.ceil(wait/60)} minutes.`); setSaving(false); return;}
-      const hash=await submitScoreOnchain(score, basename||"");
+      const hash=await submitScoreOnchain(score,basename||"");
       setTxHash(hash); setSaved(true);
     } catch(err) {
-      if(err?.message?.includes("ScoreNotHigher")) setSaveError("Score not higher than your current best onchain.");
-      else if(err?.message?.includes("rejected")||err?.message?.includes("denied")) setSaveError("Transaction cancelled.");
-      else setSaveError("Transaction failed. Try again.");
+      if(err?.message?.includes("ScoreNotHigher"))setSaveError("Score not higher than your current best.");
+      else if(err?.message?.includes("rejected")||err?.message?.includes("denied"))setSaveError("Transaction cancelled.");
+      else setSaveError("Failed. Try again.");
     }
     setSaving(false);
   };
@@ -844,37 +839,27 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
           {best>0&&<div style={{marginTop:12,fontSize:12,color:"rgba(255,215,0,.62)",fontFamily:"'Rajdhani',sans-serif",fontWeight:600,letterSpacing:2}}>PERSONAL BEST: {best.toLocaleString()}</div>}
           {wallet&&<div style={{marginTop:8,fontSize:10,color:"rgba(0,200,100,.5)",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,letterSpacing:1}}>{basename||shortAddr(wallet)}</div>}
         </div>
-
-        {/* Onchain save button */}
         {wallet&&!saved&&(
           <div style={{marginBottom:12}}>
             <button className="btn-p" style={{background:"linear-gradient(135deg,#1a6600,#33aa00)",boxShadow:"0 2px 32px rgba(50,180,0,.4)",marginBottom:8,letterSpacing:2}} onClick={saveOnchain} disabled={saving}>
               {saving?"CONFIRMING...":"⛓  Commit Score to Base"}
             </button>
             <div style={{fontSize:8,color:"rgba(100,200,100,.5)",textAlign:"center",fontFamily:"'Exo 2',sans-serif",letterSpacing:1}}>
-              ~$0.001 gas · Score saved onchain forever · Visible to all players
+              ~$0.001 gas · Stored on Base forever · Visible to all
             </div>
             {saveError&&<div style={{marginTop:8,fontSize:11,color:"#ff7766",textAlign:"center",background:"rgba(255,50,30,.08)",border:"1px solid rgba(255,80,50,.15)",borderRadius:10,padding:"8px 12px"}}>{saveError}</div>}
           </div>
         )}
-
-        {/* Saved confirmation */}
         {saved&&(
           <div style={{marginBottom:12,background:"rgba(0,100,0,.2)",border:"1px solid rgba(0,200,0,.3)",borderRadius:12,padding:"12px 16px"}}>
-            <div style={{fontSize:13,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:4}}>✅ SCORE COMMITTED TO BASE</div>
+            <div style={{fontSize:13,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:4}}>✅ SCORE ON BASE BLOCKCHAIN</div>
             <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noreferrer"
               style={{fontSize:9,color:"rgba(0,200,255,.7)",fontFamily:"'Exo 2',sans-serif",letterSpacing:1,textDecoration:"none"}}>
               View on Basescan →
             </a>
           </div>
         )}
-
-        {!wallet&&(
-          <div style={{marginBottom:12,fontSize:11,color:"rgba(100,150,255,.5)",textAlign:"center",fontFamily:"'Exo 2',sans-serif"}}>
-            Connect wallet to save score onchain
-          </div>
-        )}
-
+        {!wallet&&<div style={{marginBottom:12,fontSize:11,color:"rgba(100,150,255,.5)",textAlign:"center",fontFamily:"'Exo 2',sans-serif"}}>Connect wallet to save score onchain</div>}
         <button className="btn-p" style={{marginBottom:10,letterSpacing:3,fontSize:15}} onClick={()=>setScreen("game")}>RETRY MISSION</button>
         <button className="btn-g" style={{marginBottom:8}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
         <div style={{display:"flex",gap:8}}>
@@ -887,19 +872,17 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LEADERBOARD — reads from Base blockchain
+   LEADERBOARD
 ═══════════════════════════════════════════════════════════ */
 function BoardScreen({lb,wallet,setScreen}) {
   const medals=["🥇","🥈","🥉"];
   const myAddr=wallet?.toLowerCase();
-  const [loading,setLoading]=useState(lb.length===0);
+  const [entries,setEntries]=useState(lb);
+  const [loading,setLoading]=useState(false);
 
   useEffect(()=>{
-    if(lb.length===0){
-      getOnchainLeaderboard().then(()=>setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    setLoading(true);
+    getOnchainLeaderboard().then(data=>{setEntries(data);setLoading(false);});
   },[]);
 
   return(
@@ -909,22 +892,15 @@ function BoardScreen({lb,wallet,setScreen}) {
           <div style={{fontSize:9,letterSpacing:6,color:"rgba(255,195,0,.45)",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:5}}>ONCHAIN RANKINGS</div>
           <div style={{fontSize:32,fontWeight:900,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3,background:"linear-gradient(130deg,#ffd700,#ff9900)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>LEADERBOARD</div>
           <div style={{height:"1px",background:"linear-gradient(90deg,transparent,rgba(255,180,0,.25),transparent)",marginTop:10}}/>
-          <div style={{marginTop:8,fontSize:8,color:"rgba(120,160,200,.4)",fontFamily:"'Exo 2',sans-serif",letterSpacing:2}}>
-            Stored on Base blockchain · Ranked by score
-          </div>
+          <div style={{marginTop:8,fontSize:8,color:"rgba(120,160,200,.4)",fontFamily:"'Exo 2',sans-serif",letterSpacing:2}}>Stored on Base · Top 50 players</div>
         </div>
-
         {loading?(
-          <div style={{textAlign:"center",color:"rgba(80,120,180,.44)",padding:"48px 0",fontSize:12,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3}}>
-            LOADING FROM BASE...
-          </div>
-        ):lb.length===0?(
-          <div style={{textAlign:"center",color:"rgba(80,120,180,.44)",padding:"48px 0",fontSize:12,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3,lineHeight:2}}>
-            NO SCORES ONCHAIN YET<br/>BE THE FIRST
-          </div>
+          <div style={{textAlign:"center",color:"rgba(80,120,180,.44)",padding:"48px 0",fontSize:12,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3}}>LOADING FROM BASE...</div>
+        ):entries.length===0?(
+          <div style={{textAlign:"center",color:"rgba(80,120,180,.44)",padding:"48px 0",fontSize:12,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3,lineHeight:2}}>NO SCORES YET<br/>BE THE FIRST</div>
         ):(
           <div style={{display:"flex",flexDirection:"column",gap:7,maxHeight:460,overflowY:"auto",paddingRight:2}}>
-            {lb.map((e,i)=>{
+            {entries.map((e,i)=>{
               const isMe=myAddr&&e.wallet?.toLowerCase()===myAddr;
               const name=e.basename||shortAddr(e.wallet);
               const rankBg=["rgba(255,200,0,.1)","rgba(200,200,200,.06)","rgba(180,120,50,.06)"];
@@ -937,16 +913,13 @@ function BoardScreen({lb,wallet,setScreen}) {
                     <div style={{color:isMe?"#7fc4ff":i===0?"#ffd700":"rgba(175,215,255,.88)",fontSize:13,fontWeight:800,fontFamily:"'Rajdhani',sans-serif",letterSpacing:.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                       {name}{isMe&&<span style={{marginLeft:8,fontSize:8,color:"#0099ff",letterSpacing:2,background:"rgba(0,70,200,.3)",padding:"1px 7px",borderRadius:4}}>YOU</span>}
                     </div>
-                    {e.basename&&<div style={{color:"rgba(100,140,200,.4)",fontSize:9,fontFamily:"'Exo 2',sans-serif",letterSpacing:.5,marginTop:1}}>{shortAddr(e.wallet)}</div>}
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",flexShrink:0}}>
-                    <div style={{color:i===0?"#ffd700":i===1?"#d0d0d0":i===2?"#cd8f4a":isMe?"#7fc4ff":"rgba(220,235,255,.88)",fontWeight:900,fontSize:19,fontFamily:"'Rajdhani',sans-serif",letterSpacing:.5}}>
-                      {e.score.toLocaleString()}
-                    </div>
                     <a href={`https://basescan.org/address/${e.wallet}`} target="_blank" rel="noreferrer"
                       style={{fontSize:7,color:"rgba(0,180,255,.4)",fontFamily:"'Exo 2',sans-serif",textDecoration:"none",letterSpacing:.5}}>
                       basescan ↗
                     </a>
+                  </div>
+                  <div style={{color:i===0?"#ffd700":i===1?"#d0d0d0":i===2?"#cd8f4a":isMe?"#7fc4ff":"rgba(220,235,255,.88)",fontWeight:900,fontSize:19,fontFamily:"'Rajdhani',sans-serif",letterSpacing:.5,flexShrink:0}}>
+                    {e.score.toLocaleString()}
                   </div>
                 </div>
               );
