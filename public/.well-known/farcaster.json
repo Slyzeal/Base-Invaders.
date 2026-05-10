@@ -1,8 +1,8 @@
 {
   "accountAssociation": {
-    "header": "FILL_AFTER_SIGNING",
-    "payload": "FILL_AFTER_SIGNING",
-    "signature": "FILL_AFTER_SIGNING"
+    "header": "eyJmaWQiOjMzMjcyNjUsInR5cGUiOiJjdXN0b2R5IiwiaWV5OTkwOTlwOTIzM0VjMDIxN0ExNDlGN0ExZWFmMjMyNzc1MEQ3ODc0NjlwIn0",
+    "payload": "eyJkb21haW4iOiJiYXNlLWludmFkZXJzLXNpZ21hLnZlcmNlbC5hcHAifQ",
+    "signature": "TYdC0yiJL3sVoNhDH5GVDOZna9fyv5qKWbGOLbfWJWVzQDNfG4n4O5v1c9SQL0Op19sLWWNVDQ98OImOII17Yhw="
   },
   "frame": {
     "version": "1",
