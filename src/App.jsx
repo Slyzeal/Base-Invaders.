@@ -392,10 +392,11 @@ function drawHUD(ctx, g, now) {
   ctx.strokeStyle = "rgba(0,110,255,.22)"; ctx.lineWidth = 1; rRect(ctx, W / 2 - 32, 13, 64, 40, 8); ctx.stroke();
   ctx.font = "600 8px sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(100,160,255,.55)"; ctx.fillText("WAVE", W / 2, 26);
   ctx.font = "800 20px sans-serif"; ctx.fillStyle = "#aaccff"; ctx.fillText(String(g.wave), W / 2, 46);
-  ctx.font = "700 8px sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = "rgba(120,175,255,.55)"; ctx.fillText("SCORE", W - 18, 22);
+  // Score next to lives (left side, after the 3 life icons)
+  ctx.font = "700 8px sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = "rgba(120,175,255,.55)"; ctx.fillText("SCORE", 98, 22);
   if (g.mult > 1) { ctx.shadowColor = "#ffd700"; ctx.shadowBlur = 20; }
-  ctx.font = "900 26px sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = g.mult > 1 ? "#ffd700" : "#ffffff";
-  ctx.fillText(g.score.toLocaleString(), W - 18, 48); ctx.shadowBlur = 0;
+  ctx.font = "900 22px sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = g.mult > 1 ? "#ffd700" : "#ffffff";
+  ctx.fillText(g.score.toLocaleString(), 98, 46); ctx.shadowBlur = 0;
   if (g.laserStored) { ctx.font = "700 8px sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = "rgba(255,120,40,.8)"; ctx.fillText("LASER READY [dbl-tap]", W - 18, 62); }
   const prog = (g.kills % KILLS_PER_WAVE) / KILLS_PER_WAVE;
   ctx.fillStyle = "rgba(0,55,150,.3)"; rRect(ctx, 8, 68, W - 16, 7, 3.5); ctx.fill();
