@@ -1,11 +1,12 @@
 {
-  "name": "base-invaders",
+  "name": "base-bugs",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "viem": "^2.9.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
