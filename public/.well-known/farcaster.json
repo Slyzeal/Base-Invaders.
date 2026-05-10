@@ -1,18 +1,17 @@
 {
   "accountAssociation": {
-    "header": "REPLACE_WITH_YOUR_HEADER",
-    "payload": "REPLACE_WITH_YOUR_PAYLOAD",
-    "signature": "REPLACE_WITH_YOUR_SIGNATURE"
+    "header": "FILL_AFTER_SIGNING",
+    "payload": "FILL_AFTER_SIGNING",
+    "signature": "FILL_AFTER_SIGNING"
   },
   "frame": {
     "version": "1",
     "name": "Base Invaders",
-    "iconUrl": "https://YOUR_DEPLOYED_URL/icon.png",
-    "homeUrl": "https://YOUR_DEPLOYED_URL",
-    "imageUrl": "https://YOUR_DEPLOYED_URL/preview.png",
+    "iconUrl": "https://base-invaders-sigma.vercel.app/icon.png",
+    "homeUrl": "https://base-invaders-sigma.vercel.app",
+    "imageUrl": "https://base-invaders-sigma.vercel.app/preview.png",
     "buttonTitle": "Play Now",
-    "splashImageUrl": "https://YOUR_DEPLOYED_URL/splash.png",
-    "splashBackgroundColor": "#010108",
-    "webhookUrl": "https://YOUR_DEPLOYED_URL/api/webhook"
+    "splashImageUrl": "https://base-invaders-sigma.vercel.app/splash.png",
+    "splashBackgroundColor": "#010108"
   }
 }
