@@ -69,7 +69,7 @@ async function submitScoreOnchain(score, basename) {
   if (!accounts[0]) throw new Error("Wallet not connected");
 
   // submitScore(uint256) selector = keccak256("submitScore(uint256)") first 4 bytes
-  const selector = "e17b25af";
+  const selector = "679b62df";
   const scoreHex = score.toString(16).padStart(64, "0");
   const calldata = "0x" + selector + scoreHex;
 
