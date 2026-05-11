@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Contract config ───────────────────────────────────────────────────────────
-const CONTRACT_ADDRESS = "0xb58f8A10D8C20f461637426fF8b968f95D1DfF78";
+const CONTRACT_ADDRESS = "0x2280212AdfB7848Ca42C08c478505Cd948A65fd3";
 const BASE_RPC = "https://mainnet.base.org";
 
 // ── Read from contract (no wallet needed) ─────────────────────────────────────
