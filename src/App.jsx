@@ -64,28 +64,37 @@ function decodeLeaderboard(hex) {
 
 async function submitScoreOnchain(score, basename) {
   if (!window.ethereum) throw new Error("No wallet found");
-  const accounts = await window.ethereum.request({ method: "eth_accounts" });
+
+  await window.ethereum.request({
+    method: "wallet_switchEthereumChain",
+    params: [{ chainId: "0x2105" }]
+  });
+
+  const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
   const name = basename || "";
-  const enc = new TextEncoder();
-  const nameBytes = enc.encode(name);
+  const nameBytes = Array.from(new TextEncoder().encode(name));
+  const nameLen = nameBytes.length;
 
-  // ABI encode: submitScore(uint256,string)
-  // Slot 0: score (uint256)
-  const scoreHex = BigInt(score).toString(16).padStart(64, "0");
-  // Slot 1: offset to string (64 bytes = 0x40)
-  const offsetHex = (64).toString(16).padStart(64, "0");
-  // String length
-  const lenHex = nameBytes.length.toString(16).padStart(64, "0");
-  // String data padded to 32 bytes
-  const dataHex = Array.from(nameBytes)
+  // Pad name bytes to multiple of 32
+  const remainder = nameLen % 32;
+  const paddedLen = remainder === 0 ? nameLen : nameLen + (32 - remainder);
+  const namePadded = nameBytes
     .map(b => b.toString(16).padStart(2, "0"))
     .join("")
-    .padEnd(64, "0");
+    .padEnd(paddedLen * 2, "0");
 
-  // Correct keccak256 selector for submitScore(uint256,string) = 0x9ead7222
-  // Verified via: web3.eth.abi.encodeFunctionSignature('submitScore(uint256,string)')
+  // ABI encode
+  // [0x00] score (uint256)
+  const scoreHex = score.toString(16).padStart(64, "0");
+  // [0x20] offset to string data = 0x40 (64 bytes)
+  const offsetHex = "0000000000000000000000000000000000000000000000000000000000000040";
+  // [0x40] string length
+  const lenHex = nameLen.toString(16).padStart(64, "0");
+  // [0x60] string data padded
+  const dataHex = namePadded.padEnd(64, "0");
+
   const calldata = "0x9ead7222" + scoreHex + offsetHex + lenHex + dataHex;
 
   const txHash = await window.ethereum.request({
@@ -99,7 +108,6 @@ async function submitScoreOnchain(score, basename) {
   });
   return txHash;
 }
-
 function getLocalBest(w) {
   try { return parseInt(localStorage.getItem(`bb2:${w}`) || "0"); } catch { return 0; }
 }
