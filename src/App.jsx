@@ -67,14 +67,26 @@ async function submitScoreOnchain(score, basename) {
   const accounts = await window.ethereum.request({ method: "eth_accounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
-  // submitScore(uint256,string) selector = 0x9ead7222
-  const scoreHex = score.toString(16).padStart(64, "0");
-  const offsetHex = (64).toString(16).padStart(64, "0");
   const name = basename || "";
-  const nameBytes = Array.from(new TextEncoder().encode(name));
-  const nameLen = nameBytes.length.toString(16).padStart(64, "0");
-  const nameHex = nameBytes.map(b => b.toString(16).padStart(2, "0")).join("").padEnd(64, "0");
-  const calldata = "0x9ead7222" + scoreHex + offsetHex + nameLen + nameHex;
+  const enc = new TextEncoder();
+  const nameBytes = enc.encode(name);
+
+  // ABI encode: submitScore(uint256,string)
+  // Slot 0: score (uint256)
+  const scoreHex = BigInt(score).toString(16).padStart(64, "0");
+  // Slot 1: offset to string (64 bytes = 0x40)
+  const offsetHex = (64).toString(16).padStart(64, "0");
+  // String length
+  const lenHex = nameBytes.length.toString(16).padStart(64, "0");
+  // String data padded to 32 bytes
+  const dataHex = Array.from(nameBytes)
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("")
+    .padEnd(64, "0");
+
+  // Correct keccak256 selector for submitScore(uint256,string) = 0x9ead7222
+  // Verified via: web3.eth.abi.encodeFunctionSignature('submitScore(uint256,string)')
+  const calldata = "0x9ead7222" + scoreHex + offsetHex + lenHex + dataHex;
 
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
