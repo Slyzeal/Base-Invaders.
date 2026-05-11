@@ -65,13 +65,19 @@ function decodeLeaderboard(hex) {
 async function submitScoreOnchain(score, basename) {
   if (!window.ethereum) throw new Error("No wallet found");
 
-  const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+  const accounts = await window.ethereum.request({ 
+    method: "eth_requestAccounts" 
+  });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
-  // submitScore(uint256) selector = keccak256("submitScore(uint256)") first 4 bytes
-  const selector = "679b62df";
-  const scoreHex = score.toString(16).padStart(64, "0");
+  // selector from deployed bytecode: submitScore(uint256)
+  const selector = "5f39dd83";
+  const scoreHex = Math.floor(score).toString(16).padStart(64, "0");
   const calldata = "0x" + selector + scoreHex;
+
+  console.log("Calldata:", calldata);
+  console.log("Score:", score);
+  console.log("ScoreHex:", scoreHex);
 
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
@@ -80,7 +86,7 @@ async function submitScoreOnchain(score, basename) {
       to: CONTRACT_ADDRESS,
       data: calldata,
       chainId: "0x2105",
-      gas: "0x" + (150000).toString(16),
+      gas: "0x" + (200000).toString(16),
     }],
   });
   return txHash;
