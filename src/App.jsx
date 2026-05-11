@@ -65,38 +65,56 @@ function decodeLeaderboard(hex) {
 async function submitScoreOnchain(score, basename) {
   if (!window.ethereum) throw new Error("No wallet found");
 
-  await window.ethereum.request({
-    method: "wallet_switchEthereumChain",
-    params: [{ chainId: "0x2105" }]
-  });
-
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
+  // Use eth_call first to simulate and catch revert reason
   const name = basename || "";
-  const nameBytes = Array.from(new TextEncoder().encode(name));
-  const nameLen = nameBytes.length;
 
-  // Pad name bytes to multiple of 32
-  const remainder = nameLen % 32;
-  const paddedLen = remainder === 0 ? nameLen : nameLen + (32 - remainder);
-  const namePadded = nameBytes
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("")
-    .padEnd(paddedLen * 2, "0");
+  // Manually ABI encode submitScore(uint256,string)
+  // Function selector
+  const selector = "9ead7222";
 
-  // ABI encode
-  // [0x00] score (uint256)
+  // score as uint256 (32 bytes)
   const scoreHex = score.toString(16).padStart(64, "0");
-  // [0x20] offset to string data = 0x40 (64 bytes)
+
+  // offset to string = 64 (0x40)
   const offsetHex = "0000000000000000000000000000000000000000000000000000000000000040";
-  // [0x40] string length
-  const lenHex = nameLen.toString(16).padStart(64, "0");
-  // [0x60] string data padded
-  const dataHex = namePadded.padEnd(64, "0");
 
-  const calldata = "0x9ead7222" + scoreHex + offsetHex + lenHex + dataHex;
+  // string length
+  const encoder = new TextEncoder();
+  const nameBytes = encoder.encode(name);
+  const nameLenHex = nameBytes.length.toString(16).padStart(64, "0");
 
+  // string bytes padded to 32-byte boundary
+  let nameHex = "";
+  for (let i = 0; i < nameBytes.length; i++) {
+    nameHex += nameBytes[i].toString(16).padStart(2, "0");
+  }
+  // pad to next 32-byte boundary
+  const padTo = Math.ceil(nameBytes.length / 32) * 32;
+  nameHex = nameHex.padEnd(padTo * 2, "0");
+  // minimum 32 bytes even if empty
+  if (nameHex.length === 0) nameHex = "0".repeat(64);
+
+  const calldata = "0x" + selector + scoreHex + offsetHex + nameLenHex + nameHex;
+
+  // Simulate first
+  try {
+    await window.ethereum.request({
+      method: "eth_call",
+      params: [{
+        from: accounts[0],
+        to: CONTRACT_ADDRESS,
+        data: calldata,
+      }, "latest"]
+    });
+  } catch (simErr) {
+    console.error("Simulation failed:", simErr);
+    // Continue anyway — eth_call revert doesn't always mean tx will fail
+  }
+
+  // Send transaction
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
@@ -104,8 +122,10 @@ async function submitScoreOnchain(score, basename) {
       to: CONTRACT_ADDRESS,
       data: calldata,
       chainId: "0x2105",
+      gas: "0x" + (300000).toString(16), // explicit gas limit
     }],
   });
+
   return txHash;
 }
 function getLocalBest(w) {
