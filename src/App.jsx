@@ -53,7 +53,7 @@ function decodeLeaderboard(hex) {
     if (!count || count > 50) return [];
     const entries = [];
     for (let i = 0; i < count; i++) {
-      const base = 128 + i * 192;
+      const base = 128 + i * 96;
       const wallet = "0x" + data.slice(base + 24, base + 64);
       const score = parseInt(data.slice(base + 64, base + 128), 16);
       if (score > 0) entries.push({ wallet, score, basename: null });
@@ -68,53 +68,11 @@ async function submitScoreOnchain(score, basename) {
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
-  // Use eth_call first to simulate and catch revert reason
-  const name = basename || "";
-
-  // Manually ABI encode submitScore(uint256,string)
-  // Function selector
-  const selector = "9ead7222";
-
-  // score as uint256 (32 bytes)
+  // submitScore(uint256) selector = keccak256("submitScore(uint256)") first 4 bytes
+  const selector = "e17b25af";
   const scoreHex = score.toString(16).padStart(64, "0");
+  const calldata = "0x" + selector + scoreHex;
 
-  // offset to string = 64 (0x40)
-  const offsetHex = "0000000000000000000000000000000000000000000000000000000000000040";
-
-  // string length
-  const encoder = new TextEncoder();
-  const nameBytes = encoder.encode(name);
-  const nameLenHex = nameBytes.length.toString(16).padStart(64, "0");
-
-  // string bytes padded to 32-byte boundary
-  let nameHex = "";
-  for (let i = 0; i < nameBytes.length; i++) {
-    nameHex += nameBytes[i].toString(16).padStart(2, "0");
-  }
-  // pad to next 32-byte boundary
-  const padTo = Math.ceil(nameBytes.length / 32) * 32;
-  nameHex = nameHex.padEnd(padTo * 2, "0");
-  // minimum 32 bytes even if empty
-  if (nameHex.length === 0) nameHex = "0".repeat(64);
-
-  const calldata = "0x" + selector + scoreHex + offsetHex + nameLenHex + nameHex;
-
-  // Simulate first
-  try {
-    await window.ethereum.request({
-      method: "eth_call",
-      params: [{
-        from: accounts[0],
-        to: CONTRACT_ADDRESS,
-        data: calldata,
-      }, "latest"]
-    });
-  } catch (simErr) {
-    console.error("Simulation failed:", simErr);
-    // Continue anyway — eth_call revert doesn't always mean tx will fail
-  }
-
-  // Send transaction
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
@@ -122,10 +80,9 @@ async function submitScoreOnchain(score, basename) {
       to: CONTRACT_ADDRESS,
       data: calldata,
       chainId: "0x2105",
-      gas: "0x" + (300000).toString(16), // explicit gas limit
+      gas: "0x" + (150000).toString(16),
     }],
   });
-
   return txHash;
 }
 function getLocalBest(w) {
