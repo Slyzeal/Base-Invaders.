@@ -27,7 +27,16 @@ async function getOnchainLeaderboard() {
       to: CONTRACT_ADDRESS,
       data: "0xee5c4e5d"
     }, "latest"]);
-    return decodeLeaderboard(data);
+    const entries = decodeLeaderboard(data);
+    
+    // Resolve basenames for all entries in parallel
+    const resolved = await Promise.all(
+      entries.map(async (entry) => {
+        const basename = await resolveBasename(entry.wallet);
+        return { ...entry, basename };
+      })
+    );
+    return resolved;
   } catch (e) { console.error(e); return []; }
 }
 async function getOnchainBest(wallet) {
