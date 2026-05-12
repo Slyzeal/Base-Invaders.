@@ -37,7 +37,7 @@ async function getOnchainBest(wallet) {
     const addr = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
     const data = await rpcCall("eth_call", [{
       to: CONTRACT_ADDRESS,
-      data: "0xe2ec6ec3" + addr
+      data: "aff0b297" + addr
     }, "latest"]);
     if (!data || data === "0x") return 0;
     const score = parseInt(data.slice(66, 130), 16);
