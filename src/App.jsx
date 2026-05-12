@@ -37,7 +37,7 @@ async function getOnchainBest(wallet) {
     const addr = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
     const data = await rpcCall("eth_call", [{
       to: CONTRACT_ADDRESS,
-      data: "aff0b297" + addr
+      data: "0xe2ec6ec3" + addr
     }, "latest"]);
     if (!data || data === "0x") return 0;
     const score = parseInt(data.slice(66, 130), 16);
@@ -71,7 +71,7 @@ async function submitScoreOnchain(score, basename) {
   if (!accounts[0]) throw new Error("Wallet not connected");
 
   // selector from deployed bytecode: submitScore(uint256)
-  const selector = "5f39dd83";
+  const selector = "aff0b297";
   const scoreHex = Math.floor(score).toString(16).padStart(64, "0");
   const calldata = "0x" + selector + scoreHex;
 
