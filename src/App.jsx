@@ -23,21 +23,19 @@ function encodeCall(sig, ...args) {
 
 async function getOnchainLeaderboard() {
   try {
-    // getTopScores() selector
     const data = await rpcCall("eth_call", [{
       to: CONTRACT_ADDRESS,
-      data: "0x0a6a7cfd"
+      data: "0xee5c4e5d"
     }, "latest"]);
     return decodeLeaderboard(data);
   } catch (e) { console.error(e); return []; }
 }
-
 async function getOnchainBest(wallet) {
   try {
     const addr = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
     const data = await rpcCall("eth_call", [{
       to: CONTRACT_ADDRESS,
-      data: "0xe2ec6ec3" + addr
+      data: "0xd47875d0" + addr
     }, "latest"]);
     if (!data || data === "0x") return 0;
     const score = parseInt(data.slice(66, 130), 16);
@@ -49,36 +47,31 @@ function decodeLeaderboard(hex) {
   try {
     if (!hex || hex === "0x" || hex.length < 10) return [];
     const data = hex.slice(2);
-    const count = parseInt(data.slice(64, 128), 16);
+    // Array offset
+    const offset = parseInt(data.slice(0, 64), 16) * 2;
+    // Array length
+    const count = parseInt(data.slice(offset, offset + 64), 16);
     if (!count || count > 50) return [];
     const entries = [];
     for (let i = 0; i < count; i++) {
-      const base = 128 + i * 96;
+      // Each Entry is 3 slots: wallet(32) + score(32) + timestamp(32) = 96 bytes
+      const base = offset + 64 + i * 192;
       const wallet = "0x" + data.slice(base + 24, base + 64);
       const score = parseInt(data.slice(base + 64, base + 128), 16);
-      if (score > 0) entries.push({ wallet, score, basename: null });
+      const timestamp = parseInt(data.slice(base + 128, base + 192), 16);
+      if (score > 0 && wallet !== "0x0000000000000000000000000000000000000000") {
+        entries.push({ wallet, score, basename: null, timestamp });
+      }
     }
     return entries.sort((a, b) => b.score - a.score);
-  } catch { return []; }
+  } catch (e) { console.error("decode error", e); return []; }
 }
-
 async function submitScoreOnchain(score, basename) {
   if (!window.ethereum) throw new Error("No wallet found");
-
-  const accounts = await window.ethereum.request({ 
-    method: "eth_requestAccounts" 
-  });
+  const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
-
-  // selector from deployed bytecode: submitScore(uint256)
-  const selector = "aff0b297";
   const scoreHex = Math.floor(score).toString(16).padStart(64, "0");
-  const calldata = "0x" + selector + scoreHex;
-
-  console.log("Calldata:", calldata);
-  console.log("Score:", score);
-  console.log("ScoreHex:", scoreHex);
-
+  const calldata = "0xaff0b297" + scoreHex;
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
@@ -86,7 +79,7 @@ async function submitScoreOnchain(score, basename) {
       to: CONTRACT_ADDRESS,
       data: calldata,
       chainId: "0x2105",
-      gas: "0x" + (200000).toString(16),
+      gas: "0x30D40",
     }],
   });
   return txHash;
