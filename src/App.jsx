@@ -80,8 +80,7 @@ async function submitScoreOnchain(score, basename) {
       from: accounts[0],
       to: CONTRACT_ADDRESS,
       data: calldata,
-      chainId: "0x2105",
-      gas: "0x30D40",
+      gas: "0x" + (150000).toString(16),
     }],
   });
   return txHash;
