@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const CONTRACT_ADDRESS = "0x2280212AdfB7848Ca42C08c478505Cd948A65fd3";
 const BASE_RPC = "https://mainnet.base.org";
 
-// ── Read from contract (no wallet needed) ─────────────────────────────────────
+// ── RPC helper ────────────────────────────────────────────────────────────────
 async function rpcCall(method, params) {
   const res = await fetch(BASE_RPC, {
     method: "POST",
@@ -16,11 +16,7 @@ async function rpcCall(method, params) {
   return json.result;
 }
 
-function encodeCall(sig, ...args) {
-  const selector = sig.slice(0, 10);
-  return selector + args.map(a => a.toString(16).padStart(64, "0")).join("");
-}
-
+// ── Onchain functions ─────────────────────────────────────────────────────────
 async function getOnchainLeaderboard() {
   try {
     const data = await rpcCall("eth_call", [{
@@ -28,8 +24,6 @@ async function getOnchainLeaderboard() {
       data: "0xee5c4e5d"
     }, "latest"]);
     const entries = decodeLeaderboard(data);
-    
-    // Resolve basenames for all entries in parallel
     const resolved = await Promise.all(
       entries.map(async (entry) => {
         const basename = await resolveBasename(entry.wallet);
@@ -39,6 +33,7 @@ async function getOnchainLeaderboard() {
     return resolved;
   } catch (e) { console.error(e); return []; }
 }
+
 async function getOnchainBest(wallet) {
   try {
     const addr = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
@@ -56,14 +51,11 @@ function decodeLeaderboard(hex) {
   try {
     if (!hex || hex === "0x" || hex.length < 10) return [];
     const data = hex.slice(2);
-    // Array offset
     const offset = parseInt(data.slice(0, 64), 16) * 2;
-    // Array length
     const count = parseInt(data.slice(offset, offset + 64), 16);
     if (!count || count > 50) return [];
     const entries = [];
     for (let i = 0; i < count; i++) {
-      // Each Entry is 3 slots: wallet(32) + score(32) + timestamp(32) = 96 bytes
       const base = offset + 64 + i * 192;
       const wallet = "0x" + data.slice(base + 24, base + 64);
       const score = parseInt(data.slice(base + 64, base + 128), 16);
@@ -75,6 +67,7 @@ function decodeLeaderboard(hex) {
     return entries.sort((a, b) => b.score - a.score);
   } catch (e) { console.error("decode error", e); return []; }
 }
+
 async function submitScoreOnchain(score, basename) {
   if (!window.ethereum) throw new Error("No wallet found");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -93,11 +86,31 @@ async function submitScoreOnchain(score, basename) {
   });
   return txHash;
 }
+
 function getLocalBest(w) {
   try { return parseInt(localStorage.getItem(`bb2:${w}`) || "0"); } catch { return 0; }
 }
 function setLocalBest(w, s) {
   try { if (s > getLocalBest(w)) localStorage.setItem(`bb2:${w}`, String(s)); } catch {}
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BASENAME LOOKUP
+═══════════════════════════════════════════════════════════ */
+const domainCache = {};
+async function resolveBasename(address) {
+  if (!address) return null;
+  const key = address.toLowerCase();
+  if (domainCache[key] !== undefined) return domainCache[key];
+  try {
+    const res = await fetch(`https://api.basename.app/v1/names?address=${key}`, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const json = await res.json();
+      const name = json?.name || json?.basename || json?.[0]?.name || null;
+      domainCache[key] = name; return name;
+    }
+  } catch {}
+  domainCache[key] = null; return null;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -123,22 +136,6 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function shortAddr(a) { return a ? `${a.slice(0, 6)}...${a.slice(-4)}` : ""; }
-
-const domainCache = {};
-async function resolveBasename(address) {
-  if (!address) return null;
-  const key = address.toLowerCase();
-  if (domainCache[key] !== undefined) return domainCache[key];
-  try {
-    const res = await fetch(`https://api.basename.app/v1/names?address=${key}`, { headers: { Accept: "application/json" } });
-    if (res.ok) {
-      const json = await res.json();
-      const name = json?.name || json?.basename || json?.[0]?.name || null;
-      domainCache[key] = name; return name;
-    }
-  } catch {}
-  domainCache[key] = null; return null;
-}
 
 /* ═══════════════════════════════════════════════════════════
    AUDIO ENGINE
@@ -568,7 +565,7 @@ export default function App() {
         ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#0044aa33;border-radius:2px}
       `}</style>
       {screen==="home"&&<HomeScreen wallet={wallet} basename={basename} connect={connect} connecting={connecting} walletError={walletError} best={best} setScreen={setScreen} musicOn={musicOn} toggleMusic={toggleMusic}/>}
-      {screen==="game"&&<GameScreen wallet={wallet} basename={basename} onGameOver={handleOver} musicOn={musicOn} toggleMusic={toggleMusic}/>}
+      {screen==="game"&&<GameScreen wallet={wallet} basename={basename} onGameOver={handleOver} musicOn={musicOn} toggleMusic={toggleMusic} setScreen={setScreen}/>}
       {screen==="over"&&<GameOverScreen score={finalScore} best={best} wallet={wallet} basename={basename} setScreen={setScreen} musicOn={musicOn} toggleMusic={toggleMusic}/>}
       {screen==="board"&&<BoardScreen lb={lb} wallet={wallet} setScreen={setScreen}/>}
     </div>
@@ -664,7 +661,7 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
 /* ═══════════════════════════════════════════════════════════
    GAME SCREEN
 ═══════════════════════════════════════════════════════════ */
-function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic}) {
+function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic,setScreen}) {
   const cvs=useRef(),raf=useRef(),gs=useRef(null);
   const keys=useRef({}),drag=useRef({on:false,sx:0,ship0:0});
   const lastFire=useRef(0),lastEnemy=useRef(0),lastBase=useRef(0),lastFreeze=useRef(0),lastLaserFruit=useRef(0);
@@ -677,6 +674,13 @@ function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic}) {
 
   const burst=(g,x,y,col,n)=>{for(let i=0;i<n;i++){const a=rand(0,Math.PI*2),s=rand(70,260);g.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:rand(1.5,5),color:col});}};
   const endGame=g=>{g.dead=true;cancelAnimationFrame(raf.current);onGameOver(g.score);};
+
+  const goToMenu=useCallback(()=>{
+    cancelAnimationFrame(raf.current);
+    audio.stopMusic();
+    audio.laserStop();
+    setScreen("home");
+  },[]);
 
   const togglePause=useCallback(()=>{
     pausedRef.current=!pausedRef.current; setPaused(pausedRef.current);
@@ -792,11 +796,16 @@ function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic}) {
         </div>
         {paused&&(
           <div style={{position:"absolute",inset:0,background:"rgba(0,3,20,.78)",borderRadius:18,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:5,backdropFilter:"blur(4px)"}}>
-            <div style={{background:"rgba(0,10,40,.96)",border:"1px solid rgba(0,100,220,.35)",borderRadius:18,padding:"36px 52px",textAlign:"center"}}>
+            <div style={{background:"rgba(0,10,40,.96)",border:"1px solid rgba(0,100,220,.35)",borderRadius:18,padding:"36px 48px",textAlign:"center",minWidth:260}}>
               <div style={{fontSize:9,letterSpacing:6,color:"rgba(100,160,255,.55)",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:8}}>GAME PAUSED</div>
               <div style={{fontSize:54,fontWeight:900,color:"#fff",fontFamily:"'Rajdhani',sans-serif",lineHeight:1,marginBottom:12,letterSpacing:6}}>II</div>
-              <div style={{fontSize:24,fontWeight:900,fontFamily:"'Rajdhani',sans-serif",color:"#ffd700",marginBottom:20}}>{score.toLocaleString()}</div>
-              <button className="btn-p" style={{fontSize:14,padding:"13px 36px",letterSpacing:3,width:"auto"}} onClick={togglePause}>RESUME</button>
+              <div style={{fontSize:24,fontWeight:900,fontFamily:"'Rajdhani',sans-serif",color:"#ffd700",marginBottom:24}}>{score.toLocaleString()}</div>
+              <button className="btn-p" style={{fontSize:14,padding:"13px 36px",letterSpacing:3,width:"100%",marginBottom:10}} onClick={togglePause}>
+                ▶  RESUME
+              </button>
+              <button className="btn-g" style={{fontSize:13,letterSpacing:2,width:"100%"}} onClick={goToMenu}>
+                ← Main Menu
+              </button>
             </div>
           </div>
         )}
@@ -819,15 +828,21 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
   const [txHash,setTxHash]=useState("");
 
   const saveOnchain=async()=>{
-    if(!wallet){setSaveError("Connect wallet first"); return;}
+    if(!wallet){setSaveError("Connect wallet first."); return;}
     setSaving(true); setSaveError("");
     try {
       const hash=await submitScoreOnchain(score,basename||"");
       setTxHash(hash); setSaved(true);
     } catch(err) {
-      if(err?.message?.includes("ScoreNotHigher"))setSaveError("Score not higher than your current best.");
-      else if(err?.message?.includes("rejected")||err?.message?.includes("denied"))setSaveError("Transaction cancelled.");
-      else setSaveError("Failed. Try again.");
+      const msg=err?.message||"";
+      if(msg.includes("Score not higher")||msg.includes("ScoreNotHigher"))
+        setSaveError("Your score is not higher than your previous best onchain. No need to resubmit.");
+      else if(msg.includes("rejected")||msg.includes("denied"))
+        setSaveError("Transaction cancelled.");
+      else if(msg.includes("Rate limited")||msg.includes("RateLimited"))
+        setSaveError("Rate limited — please wait 5 minutes before submitting again.");
+      else
+        setSaveError("Transaction failed: " + (msg||"Unknown error"));
     }
     setSaving(false);
   };
@@ -844,6 +859,8 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
           {best>0&&<div style={{marginTop:12,fontSize:12,color:"rgba(255,215,0,.62)",fontFamily:"'Rajdhani',sans-serif",fontWeight:600,letterSpacing:2}}>PERSONAL BEST: {best.toLocaleString()}</div>}
           {wallet&&<div style={{marginTop:8,fontSize:10,color:"rgba(0,200,100,.5)",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,letterSpacing:1}}>{basename||shortAddr(wallet)}</div>}
         </div>
+
+        {/* Onchain save */}
         {wallet&&!saved&&(
           <div style={{marginBottom:12}}>
             <button className="btn-p" style={{background:"linear-gradient(135deg,#1a6600,#33aa00)",boxShadow:"0 2px 32px rgba(50,180,0,.4)",marginBottom:8,letterSpacing:2}} onClick={saveOnchain} disabled={saving}>
@@ -852,9 +869,19 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
             <div style={{fontSize:8,color:"rgba(100,200,100,.5)",textAlign:"center",fontFamily:"'Exo 2',sans-serif",letterSpacing:1}}>
               ~$0.001 gas · Stored on Base forever · Visible to all
             </div>
-            {saveError&&<div style={{marginTop:8,fontSize:11,color:"#ff7766",textAlign:"center",background:"rgba(255,50,30,.08)",border:"1px solid rgba(255,80,50,.15)",borderRadius:10,padding:"8px 12px"}}>{saveError}</div>}
+            {saveError&&(
+              <div style={{marginTop:10,background:"rgba(255,50,30,.08)",border:"1px solid rgba(255,80,50,.15)",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                <div style={{fontSize:12,color:"#ff7766",marginBottom:saveError.includes("not higher")||saveError.includes("Rate limited")?0:10,lineHeight:1.5}}>{saveError}</div>
+                {!saveError.includes("not higher")&&!saveError.includes("Rate limited")&&(
+                  <button className="btn-p" style={{fontSize:12,padding:"10px",letterSpacing:1,marginTop:8,background:"linear-gradient(135deg,#aa2200,#ff4400)"}} onClick={saveOnchain} disabled={saving}>
+                    {saving?"RETRYING...":"↻  Try Again"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
+
         {saved&&(
           <div style={{marginBottom:12,background:"rgba(0,100,0,.2)",border:"1px solid rgba(0,200,0,.3)",borderRadius:12,padding:"12px 16px"}}>
             <div style={{fontSize:13,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:4}}>✅ SCORE ON BASE BLOCKCHAIN</div>
@@ -864,7 +891,9 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
             </a>
           </div>
         )}
+
         {!wallet&&<div style={{marginBottom:12,fontSize:11,color:"rgba(100,150,255,.5)",textAlign:"center",fontFamily:"'Exo 2',sans-serif"}}>Connect wallet to save score onchain</div>}
+
         <button className="btn-p" style={{marginBottom:10,letterSpacing:3,fontSize:15}} onClick={()=>setScreen("game")}>RETRY MISSION</button>
         <button className="btn-g" style={{marginBottom:8}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
         <div style={{display:"flex",gap:8}}>
@@ -897,7 +926,7 @@ function BoardScreen({lb,wallet,setScreen}) {
           <div style={{fontSize:9,letterSpacing:6,color:"rgba(255,195,0,.45)",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:5}}>ONCHAIN RANKINGS</div>
           <div style={{fontSize:32,fontWeight:900,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3,background:"linear-gradient(130deg,#ffd700,#ff9900)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>LEADERBOARD</div>
           <div style={{height:"1px",background:"linear-gradient(90deg,transparent,rgba(255,180,0,.25),transparent)",marginTop:10}}/>
-          <div style={{marginTop:8,fontSize:8,color:"rgba(120,160,200,.4)",fontFamily:"'Exo 2',sans-serif",letterSpacing:2}}>Stored on Base · Top 50 players</div>
+          <div style={{marginTop:8,fontSize:8,color:"rgba(120,160,200,.4)",fontFamily:"'Exo 2',sans-serif",letterSpacing:2}}>Stored on Base · Top 50 · Basenames shown</div>
         </div>
         {loading?(
           <div style={{textAlign:"center",color:"rgba(80,120,180,.44)",padding:"48px 0",fontSize:12,fontFamily:"'Rajdhani',sans-serif",letterSpacing:3}}>LOADING FROM BASE...</div>
