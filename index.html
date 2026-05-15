@@ -5,22 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#010108" />
 
-    <!-- Farcaster Mini App meta tags -->
-    <meta property="of:version" content="vNext" />
-    <meta property="of:accepts:xmtp" content="vNext" />
-    <meta property="fc:frame" content="vNext" />
-    <meta property="fc:frame:image" content="https://base-invaders-sigma.vercel.app/preview.png" />
-    <meta property="fc:frame:image:aspect_ratio" content="1.91:1" />
-    <meta property="fc:frame:button:1" content="Play Now" />
-    <meta property="fc:frame:button:1:action" content="launch_frame" />
-    <meta property="fc:frame:button:1:target" content="https://base-invaders-sigma.vercel.app" />
-    <meta property="fc:frame:button:1:post_url" content="https://base-invaders-sigma.vercel.app" />
+    <!-- Farcaster Mini App embed — new format (stringified JSON) -->
+    <meta name="fc:miniapp" content='{"version":"1","imageUrl":"https://base-invaders-sigma.vercel.app/preview.png","button":{"title":"Play Now","action":{"type":"launch_frame","name":"Base Bugs","url":"https://base-invaders-sigma.vercel.app","splashImageUrl":"https://base-invaders-sigma.vercel.app/splash.png","splashBackgroundColor":"#010108"}}}' />
+
+    <!-- Backward compatibility with old fc:frame format -->
+    <meta name="fc:frame" content='{"version":"1","imageUrl":"https://base-invaders-sigma.vercel.app/preview.png","button":{"title":"Play Now","action":{"type":"launch_frame","name":"Base Bugs","url":"https://base-invaders-sigma.vercel.app","splashImageUrl":"https://base-invaders-sigma.vercel.app/splash.png","splashBackgroundColor":"#010108"}}}' />
 
     <!-- Open Graph -->
     <meta property="og:title" content="Base Bugs" />
     <meta property="og:description" content="Shoot aliens, collect $BASE, save scores onchain on Base." />
     <meta property="og:image" content="https://base-invaders-sigma.vercel.app/preview.png" />
     <meta property="og:url" content="https://base-invaders-sigma.vercel.app" />
+    <meta property="og:type" content="website" />
 
     <title>Base Bugs</title>
     <link rel="icon" href="/icon.png" />
