@@ -3,15 +3,17 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
 
-// Signal to Farcaster/Warpcast that the app is ready
-// This replaces the SDK's sdk.actions.ready() call
-window.addEventListener("load", () => {
+// Tell Warpcast the app is ready to display
+async function init() {
   try {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: "frameReady" }, "*");
-    }
-  } catch {}
-});
+    const { sdk } = await import("https://esm.sh/@farcaster/miniapp-sdk@latest");
+    await sdk.actions.ready();
+  } catch {
+    // Not inside Warpcast — ignore
+  }
+}
+
+init();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
