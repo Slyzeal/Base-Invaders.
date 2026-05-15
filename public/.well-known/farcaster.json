@@ -7,11 +7,11 @@
   "frame": {
     "version": "1",
     "name": "Base Bugs",
-    "iconUrl": "https://base-invaders-sigma.vercel.app/icon.png",
+    "iconUrl": "https://base-invaders-sigma.vercel.app/icon.png?v=2",
     "homeUrl": "https://base-invaders-sigma.vercel.app",
-    "imageUrl": "https://base-invaders-sigma.vercel.app/preview.png",
+    "imageUrl": "https://base-invaders-sigma.vercel.app/preview.png?v=2",
     "buttonTitle": "Play Now",
-    "splashImageUrl": "https://base-invaders-sigma.vercel.app/splash.png",
+    "splashImageUrl": "https://base-invaders-sigma.vercel.app/splash.png?v=2",
     "splashBackgroundColor": "#010108"
   }
 }
