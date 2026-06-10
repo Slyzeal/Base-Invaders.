@@ -540,8 +540,13 @@ export default function App() {
   const toggleMusic = () => {
     const on = !musicOn;
     setMusicOn(on);
-    if (!on) audio.stopMusic();
-    else { audio.init(); audio.resume(); audio.startMusic(); }
+    if (!on) {
+      audio.stopMusic();
+      if (audio.masterGain) audio.masterGain.gain.value = 0;
+    } else {
+      if (audio.masterGain) audio.masterGain.gain.value = 0.65;
+      audio.init(); audio.resume(); audio.startMusic();
+    }
   };
   useEffect(() => { if (screen === "board") getOnchainLeaderboard().then(setLb); }, [screen]);
 
@@ -697,11 +702,17 @@ function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic,setScreen}) 
     if(g.laserStored&&g.laserEnd<=Date.now()){g.laserStored=false;g.laserEnd=Date.now()+LASER_DURATION;audio.laserStart();}
   },[]);
 
-  // React to music toggle from parent
+  // React to mute/unmute during gameplay
   useEffect(()=>{
     if(!audio.ctx) return;
-    if(musicOn){ audio.resume(); if(!audio.musicPlaying) audio.startMusic(); }
-    else audio.stopMusic();
+    if(!musicOn){
+      audio.stopMusic();
+      if(audio.masterGain) audio.masterGain.gain.value = 0;
+    } else {
+      if(audio.masterGain) audio.masterGain.gain.value = 0.65;
+      audio.resume();
+      if(!audio.musicPlaying) audio.startMusic();
+    }
   },[musicOn]);
 
   useEffect(()=>{
