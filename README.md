@@ -78,4 +78,4 @@ Open http://localhost:3000
 npm run build
 ```
 
-Upload the `build/` folder to any static host.
+Upload the `build/` folder to any static host. 
