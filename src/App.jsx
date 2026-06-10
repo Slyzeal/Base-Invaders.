@@ -537,7 +537,12 @@ export default function App() {
     setScreen("over");
   }, [wallet]);
 
-  const toggleMusic = () => { const on = audio.toggleMusic(); setMusicOn(on); };
+  const toggleMusic = () => {
+    const on = !musicOn;
+    setMusicOn(on);
+    if (!on) audio.stopMusic();
+    else { audio.init(); audio.resume(); audio.startMusic(); }
+  };
   useEffect(() => { if (screen === "board") getOnchainLeaderboard().then(setLb); }, [screen]);
 
   return (
@@ -691,6 +696,13 @@ function GameScreen({wallet,basename,onGameOver,musicOn,toggleMusic,setScreen}) 
     const g=gs.current; if(!g||g.dead||pausedRef.current)return;
     if(g.laserStored&&g.laserEnd<=Date.now()){g.laserStored=false;g.laserEnd=Date.now()+LASER_DURATION;audio.laserStart();}
   },[]);
+
+  // React to music toggle from parent
+  useEffect(()=>{
+    if(!audio.ctx) return;
+    if(musicOn){ audio.resume(); if(!audio.musicPlaying) audio.startMusic(); }
+    else audio.stopMusic();
+  },[musicOn]);
 
   useEffect(()=>{
     audio.init(); audio.resume(); if(musicOn)audio.startMusic();
