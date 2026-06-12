@@ -120,7 +120,7 @@ async function submitScoreOnchain(score, wallet) {
       from: accounts[0],
       to: CONTRACT_ADDRESS,
       data: calldata,
-      gas: "0x" + (250000).toString(16),
+      gas: "0x" + (500000).toString(16),
     }],
   });
   return txHash;
