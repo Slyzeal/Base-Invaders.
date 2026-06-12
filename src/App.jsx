@@ -86,9 +86,12 @@ async function checkHasMintedNFT(wallet) {
 async function signScore(score, wallet) {
   const timestamp = Math.floor(Date.now() / 1000);
   const message = `Base Bugs score: ${Math.floor(score)} | wallet: ${wallet.toLowerCase()} | time: ${timestamp}`;
+  // Convert to hex so all wallets (Zerion, Coinbase, Base App) handle it identically
+  const msgHex = "0x" + Array.from(new TextEncoder().encode(message))
+    .map(b => b.toString(16).padStart(2, "0")).join("");
   const signature = await window.ethereum.request({
     method: "personal_sign",
-    params: [message, wallet],
+    params: [msgHex, wallet],
   });
   return { signature, timestamp };
 }
