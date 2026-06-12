@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Contract addresses ────────────────────────────────────────────────────────
-const CONTRACT_ADDRESS     = "0x9adBd7aA7c43a011b9C058EA0566b930eFFA030b"; // LeaderboardV3
+const CONTRACT_ADDRESS     = "0xE791f436013AE7092eaE583e0d7c00Da1549fFE0"; // LeaderboardV4
 const NFT_CONTRACT_ADDRESS = "0x93966cE7c8599069a7C39C816b8E8BcD05eF4d57"; // BaseBugsNFT
 const BASE_RPC = "https://mainnet.base.org";
 
