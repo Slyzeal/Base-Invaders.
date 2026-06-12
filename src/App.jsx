@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// ── Contract config ───────────────────────────────────────────────────────────
-const CONTRACT_ADDRESS = "0x2280212AdfB7848Ca42C08c478505Cd948A65fd3";
+// ── Contract addresses ────────────────────────────────────────────────────────
+const CONTRACT_ADDRESS     = "0x9adBd7aA7c43a011b9C058EA0566b930eFFA030b"; // LeaderboardV3
+const NFT_CONTRACT_ADDRESS = "0x93966cE7c8599069a7C39C816b8E8BcD05eF4d57"; // BaseBugsNFT
 const BASE_RPC = "https://mainnet.base.org";
 
 // ── RPC helper ────────────────────────────────────────────────────────────────
@@ -68,19 +69,58 @@ function decodeLeaderboard(hex) {
   } catch (e) { console.error("decode error", e); return []; }
 }
 
-async function submitScoreOnchain(score, basename) {
+// ── Check if wallet already has NFT ──────────────────────────────────────────
+async function checkHasMintedNFT(wallet) {
+  try {
+    const addr = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
+    const data = await rpcCall("eth_call", [{
+      to: NFT_CONTRACT_ADDRESS,
+      data: "0x76215985" + addr // hasMinted(address)
+    }, "latest"]);
+    if (!data || data === "0x") return false;
+    return parseInt(data, 16) === 1;
+  } catch { return false; }
+}
+
+// ── Sign score message (FREE — no gas) ───────────────────────────────────────
+async function signScore(score, wallet) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const message = `Base Bugs score: ${Math.floor(score)} | wallet: ${wallet.toLowerCase()} | time: ${timestamp}`;
+  const signature = await window.ethereum.request({
+    method: "personal_sign",
+    params: [message, wallet],
+  });
+  return { signature, timestamp };
+}
+
+// ── Submit score + signature onchain ─────────────────────────────────────────
+// selector for submitScore(uint256,uint256,bytes) — fill after deploying V3
+async function submitScoreOnchain(score, wallet) {
   if (!window.ethereum) throw new Error("No wallet found");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
+
+  // Step 1: Sign — FREE, no gas
+  const { signature, timestamp } = await signScore(score, accounts[0]);
+
+  // Step 2: ABI encode submitScore(uint256 score, uint256 timestamp, bytes signature)
+  const selector = "f2c0a29a"; // submitScore(uint256,uint256,bytes) from Basescan
   const scoreHex = Math.floor(score).toString(16).padStart(64, "0");
-  const calldata = "0xaff0b297" + scoreHex;
+  const tsHex = timestamp.toString(16).padStart(64, "0");
+  const offsetHex = (96).toString(16).padStart(64, "0"); // offset to bytes param
+  const sigBytes = signature.slice(2); // remove 0x
+  const sigLen = (sigBytes.length / 2).toString(16).padStart(64, "0"); // 65 bytes
+  const sigPadded = sigBytes.padEnd(128, "0"); // pad to 96 bytes
+
+  const calldata = "0x" + selector + scoreHex + tsHex + offsetHex + sigLen + sigPadded;
+
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
       from: accounts[0],
       to: CONTRACT_ADDRESS,
       data: calldata,
-      gas: "0x" + (150000).toString(16),
+      gas: "0x" + (250000).toString(16),
     }],
   });
   return txHash;
@@ -848,21 +888,49 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
   const [saved,setSaved]=useState(false);
   const [saveError,setSaveError]=useState("");
   const [txHash,setTxHash]=useState("");
+  const [nftMinted,setNftMinted]=useState(false);
+  const [nftRarity,setNftRarity]=useState("");
+  const [eligibleForNFT,setEligibleForNFT]=useState(false);
+
+  // Check NFT eligibility on mount
+  useEffect(()=>{
+    if(!wallet||score<4000)return;
+    checkHasMintedNFT(wallet).then(hasMinted=>{
+      if(!hasMinted) setEligibleForNFT(true);
+    });
+  },[wallet,score]);
 
   const saveOnchain=async()=>{
     if(!wallet){setSaveError("Connect wallet first."); return;}
     setSaving(true); setSaveError("");
     try {
-      const hash=await submitScoreOnchain(score,basename||"");
+      // Check onchain best first
+      const onchainBest=await getOnchainBest(wallet);
+      if(score<=onchainBest){
+        setSaveError("Your score is not higher than your previous best onchain. No need to resubmit.");
+        setSaving(false); return;
+      }
+      const hash=await submitScoreOnchain(score,wallet);
       setTxHash(hash); setSaved(true);
+      // Check if NFT was minted (score >= 4000 and was eligible)
+      if(score>=4000&&eligibleForNFT){
+        setNftMinted(true);
+        // Determine rarity display (we don't know actual rarity from tx hash alone)
+        // Will show on OpenSea after tx confirms
+        setNftRarity("check wallet");
+      }
     } catch(err) {
       const msg=err?.message||"";
       if(msg.includes("Score not higher")||msg.includes("ScoreNotHigher"))
         setSaveError("Your score is not higher than your previous best onchain. No need to resubmit.");
-      else if(msg.includes("rejected")||msg.includes("denied"))
+      else if(msg.includes("rejected")||msg.includes("denied")||msg.includes("cancelled")||msg.includes("User denied"))
         setSaveError("Transaction cancelled.");
+      else if(msg.includes("Signature expired"))
+        setSaveError("Signature expired — please try again quickly.");
       else if(msg.includes("Rate limited")||msg.includes("RateLimited"))
         setSaveError("Rate limited — please wait 5 minutes before submitting again.");
+      else if(msg.includes("Invalid signature"))
+        setSaveError("Invalid signature — make sure you sign with the connected wallet.");
       else
         setSaveError("Transaction failed: " + (msg||"Unknown error"));
     }
@@ -882,14 +950,26 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
           {wallet&&<div style={{marginTop:8,fontSize:10,color:"rgba(0,200,100,.5)",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,letterSpacing:1}}>{basename||shortAddr(wallet)}</div>}
         </div>
 
+        {/* NFT eligibility hint */}
+        {wallet&&!saved&&eligibleForNFT&&score>=4000&&(
+          <div style={{marginBottom:12,background:"rgba(180,120,0,.12)",border:"1px solid rgba(255,215,0,.25)",borderRadius:12,padding:"10px 14px"}}>
+            <div style={{fontSize:12,color:"#ffd700",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,letterSpacing:1}}>
+              🎉 You qualify for a Base Bugs NFT!
+            </div>
+            <div style={{fontSize:9,color:"rgba(255,215,0,.5)",marginTop:4,fontFamily:"'Exo 2',sans-serif",letterSpacing:1}}>
+              Commit your score to mint automatically
+            </div>
+          </div>
+        )}
+
         {/* Onchain save */}
         {wallet&&!saved&&(
           <div style={{marginBottom:12}}>
             <button className="btn-p" style={{background:"linear-gradient(135deg,#1a6600,#33aa00)",boxShadow:"0 2px 32px rgba(50,180,0,.4)",marginBottom:8,letterSpacing:2}} onClick={saveOnchain} disabled={saving}>
-              {saving?"CONFIRMING...":"⛓  Commit Score to Base"}
+              {saving?"SIGNING & CONFIRMING...":"⛓  Commit Score to Base"}
             </button>
             <div style={{fontSize:8,color:"rgba(100,200,100,.5)",textAlign:"center",fontFamily:"'Exo 2',sans-serif",letterSpacing:1}}>
-              ~$0.001 gas · Stored on Base forever · Visible to all
+              Sign message (free) → confirm tx (~$0.002) · Stored forever
             </div>
             {saveError&&(
               <div style={{marginTop:10,background:"rgba(255,50,30,.08)",border:"1px solid rgba(255,80,50,.15)",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
@@ -904,13 +984,30 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
           </div>
         )}
 
+        {/* Success */}
         {saved&&(
-          <div style={{marginBottom:12,background:"rgba(0,100,0,.2)",border:"1px solid rgba(0,200,0,.3)",borderRadius:12,padding:"12px 16px"}}>
-            <div style={{fontSize:13,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:4}}>✅ SCORE ON BASE BLOCKCHAIN</div>
-            <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noreferrer"
-              style={{fontSize:9,color:"rgba(0,200,255,.7)",fontFamily:"'Exo 2',sans-serif",letterSpacing:1,textDecoration:"none"}}>
-              View on Basescan →
-            </a>
+          <div style={{marginBottom:12}}>
+            <div style={{background:"rgba(0,100,0,.2)",border:"1px solid rgba(0,200,0,.3)",borderRadius:12,padding:"12px 16px",marginBottom:nftMinted?10:0}}>
+              <div style={{fontSize:13,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,marginBottom:4}}>✅ SCORE ON BASE BLOCKCHAIN</div>
+              <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noreferrer"
+                style={{fontSize:9,color:"rgba(0,200,255,.7)",fontFamily:"'Exo 2',sans-serif",letterSpacing:1,textDecoration:"none"}}>
+                View on Basescan →
+              </a>
+            </div>
+            {nftMinted&&(
+              <div style={{background:"rgba(180,120,0,.2)",border:"1px solid rgba(255,215,0,.4)",borderRadius:12,padding:"12px 16px"}}>
+                <div style={{fontSize:16,color:"#ffd700",fontFamily:"'Rajdhani',sans-serif",fontWeight:900,marginBottom:4,letterSpacing:1}}>
+                  🎉 BASE BUGS NFT MINTED!
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,215,0,.6)",fontFamily:"'Exo 2',sans-serif",marginBottom:6}}>
+                  Check your wallet — rarity revealed on OpenSea
+                </div>
+                <a href={`https://opensea.io/${wallet}`} target="_blank" rel="noreferrer"
+                  style={{fontSize:9,color:"rgba(0,200,255,.7)",fontFamily:"'Exo 2',sans-serif",letterSpacing:1,textDecoration:"none"}}>
+                  View on OpenSea →
+                </a>
+              </div>
+            )}
           </div>
         )}
 
