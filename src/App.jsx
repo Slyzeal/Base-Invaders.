@@ -119,9 +119,10 @@ async function submitScoreOnchain(score, wallet) {
   const scoreHex = Math.floor(score).toString(16).padStart(64, "0");
   const tsHex = timestamp.toString(16).padStart(64, "0");
   const offsetHex = (96).toString(16).padStart(64, "0");
-  const sigBytes = signature.slice(2);
-  const sigLen = (sigBytes.length / 2).toString(16).padStart(64, "0");
-  const sigPadded = sigBytes.padEnd(128, "0");
+  const sigBytes = signature.slice(2); // 130 hex chars = 65 bytes
+  const sigLen = (sigBytes.length / 2).toString(16).padStart(64, "0"); // 65 = 0x41
+  // Pad to next multiple of 32 bytes: 65 bytes → 96 bytes = 192 hex chars
+  const sigPadded = sigBytes.padEnd(192, "0");
 
   const calldata = "0x" + selector + scoreHex + tsHex + offsetHex + sigLen + sigPadded;
 
