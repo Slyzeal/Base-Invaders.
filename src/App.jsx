@@ -83,12 +83,17 @@ async function checkHasMintedNFT(wallet) {
 }
 
 // ── Sign score message (FREE — no gas) ───────────────────────────────────────
+// ── Sign score message (FREE — no gas) ───────────────────────────────────────
 async function signScore(score, wallet) {
   const timestamp = Math.floor(Date.now() / 1000);
-  const message = `Base Bugs score: ${Math.floor(score)} | wallet: ${wallet.toLowerCase()} | time: ${timestamp}`;
-  // Convert to hex so all wallets (Zerion, Coinbase, Base App) handle it identically
+  // wallet is already lowercase
+  const message = `Base Bugs score: ${Math.floor(score)} | wallet: ${wallet} | time: ${timestamp}`;
+
+  // Encode as hex bytes — required by Base App / Coinbase Wallet
+  // Zerion also accepts this format correctly
   const msgHex = "0x" + Array.from(new TextEncoder().encode(message))
     .map(b => b.toString(16).padStart(2, "0")).join("");
+
   const signature = await window.ethereum.request({
     method: "personal_sign",
     params: [msgHex, wallet],
@@ -103,32 +108,22 @@ async function submitScoreOnchain(score, wallet) {
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   if (!accounts[0]) throw new Error("Wallet not connected");
 
+  // Always lowercase for consistent message signing across all wallets
+  const signerAddress = accounts[0].toLowerCase();
+
   // Step 1: Sign — FREE, no gas
-  const { signature, timestamp } = await signScore(score, accounts[0]);
+  const { signature, timestamp } = await signScore(score, signerAddress);
 
   // Step 2: ABI encode submitScore(uint256 score, uint256 timestamp, bytes signature)
   const selector = "f2c0a29a"; // submitScore(uint256,uint256,bytes) from Basescan
   const scoreHex = Math.floor(score).toString(16).padStart(64, "0");
   const tsHex = timestamp.toString(16).padStart(64, "0");
-  const offsetHex = (96).toString(16).padStart(64, "0"); // offset to bytes param
-  const sigBytes = signature.slice(2); // remove 0x
-  const sigLen = (sigBytes.length / 2).toString(16).padStart(64, "0"); // 65 bytes
-  const sigPadded = sigBytes.padEnd(128, "0"); // pad to 96 bytes
+  const offsetHex = (96).toString(16).padStart(64, "0");
+  const sigBytes = signature.slice(2);
+  const sigLen = (sigBytes.length / 2).toString(16).padStart(64, "0");
+  const sigPadded = sigBytes.padEnd(128, "0");
 
   const calldata = "0x" + selector + scoreHex + tsHex + offsetHex + sigLen + sigPadded;
-
-  // Estimate gas first — works with all wallets including Base App
-  let gasLimit;
-  try {
-    const estimated = await window.ethereum.request({
-      method: "eth_estimateGas",
-      params: [{ from: accounts[0], to: CONTRACT_ADDRESS, data: calldata }]
-    });
-    // Add 50% buffer for NFT mint
-    gasLimit = "0x" + Math.ceil(parseInt(estimated, 16) * 1.5).toString(16);
-  } catch {
-    gasLimit = "0x" + (500000).toString(16);
-  }
 
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
@@ -136,7 +131,7 @@ async function submitScoreOnchain(score, wallet) {
       from: accounts[0],
       to: CONTRACT_ADDRESS,
       data: calldata,
-      gas: gasLimit,
+      gas: "0x" + (500000).toString(16),
     }],
   });
   return txHash;
