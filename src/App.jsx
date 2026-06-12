@@ -117,13 +117,26 @@ async function submitScoreOnchain(score, wallet) {
 
   const calldata = "0x" + selector + scoreHex + tsHex + offsetHex + sigLen + sigPadded;
 
+  // Estimate gas first — works with all wallets including Base App
+  let gasLimit;
+  try {
+    const estimated = await window.ethereum.request({
+      method: "eth_estimateGas",
+      params: [{ from: accounts[0], to: CONTRACT_ADDRESS, data: calldata }]
+    });
+    // Add 50% buffer for NFT mint
+    gasLimit = "0x" + Math.ceil(parseInt(estimated, 16) * 1.5).toString(16);
+  } catch {
+    gasLimit = "0x" + (500000).toString(16);
+  }
+
   const txHash = await window.ethereum.request({
     method: "eth_sendTransaction",
     params: [{
       from: accounts[0],
       to: CONTRACT_ADDRESS,
       data: calldata,
-      gas: "0x" + (500000).toString(16),
+      gas: gasLimit,
     }],
   });
   return txHash;
