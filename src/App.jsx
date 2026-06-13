@@ -717,13 +717,13 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
   },[]);
 
   return(
-    <div className="sc" style={{position:"relative",width:W,borderRadius:22,boxShadow:"0 0 100px rgba(0,50,190,.32),0 0 0 1px rgba(0,80,220,.15)"}}>
-      <canvas ref={cvs} width={W} height={H} style={{display:"block",position:"absolute",top:0,left:0,borderRadius:22}}/>
-      <div style={{position:"absolute",inset:0,pointerEvents:"none",borderRadius:22}}>
+    <div className="sc" style={{position:"relative",width:W,maxHeight:"100vh",borderRadius:22,overflowY:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 0 100px rgba(0,50,190,.32),0 0 0 1px rgba(0,80,220,.15)"}}>
+      <canvas ref={cvs} width={W} height={H} style={{display:"block",position:"absolute",top:0,left:0,borderRadius:22,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",top:0,left:0,width:W,height:H,pointerEvents:"none",borderRadius:22}}>
         <div style={{position:"absolute",left:0,right:0,height:2,background:"linear-gradient(90deg,transparent,rgba(0,160,255,.06),transparent)",animation:"scan 7s linear infinite"}}/>
         <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at center,transparent 55%,rgba(0,0,12,.7) 100%)"}}/>
       </div>
-      <div style={{position:"relative",minHeight:H,display:"flex",flexDirection:"column",padding:"26px 26px",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div style={{position:"relative",display:"flex",flexDirection:"column",padding:"26px 26px",minHeight:H}}>
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
           <button className="btn-ic" onClick={toggleMusic}>{musicOn?"🔊":"🔇"}</button>
         </div>
@@ -737,7 +737,7 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
           </div>
         </div>
         <div style={{flex:1}}/>
-        <div style={{background:"rgba(0,10,40,.75)",backdropFilter:"blur(16px)",border:"1px solid rgba(0,80,200,.2)",borderRadius:16,padding:"10px 18px",marginBottom:10}}>
+        <div style={{background:"rgba(0,10,40,.75)",backdropFilter:"blur(16px)",border:"1px solid rgba(0,80,200,.2)",borderRadius:16,padding:"14px 18px",marginBottom:14}}>
           <div style={{fontSize:9,letterSpacing:4,color:"rgba(0,140,255,.5)",marginBottom:10,fontFamily:"'Rajdhani',sans-serif",fontWeight:700}}>HOW TO PLAY</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 12px"}}>
             {[["DRAG","Move ship"],["AUTO-FIRE","Shoots automatically"],["BLUE","x2 score"],["CYAN","Freeze enemies"],["RED","Laser beam"],["x10 KILLS","Next wave"]].map(([k,v])=>(
@@ -774,10 +774,10 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
             </div>
           </div>
         )}
-        <button className="btn-p" style={{marginBottom:7,fontSize:16,padding:"13px",letterSpacing:4}} onClick={()=>setScreen("game")}>LAUNCH</button>
-        <button className="btn-g" style={{marginBottom:6,padding:"10px 24px"}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
-        <button className="btn-g" style={{padding:"10px 24px",background:"rgba(180,120,0,.08)",border:"1px solid rgba(255,180,0,.2)",color:"#ffd700"}} onClick={()=>setScreen("royalties")}>💎  Royalties <span style={{fontSize:9,background:"rgba(255,180,0,.15)",border:"1px solid rgba(255,180,0,.25)",borderRadius:6,padding:"2px 7px",marginLeft:6,letterSpacing:2}}>EARN ETH</span></button>
-        <div style={{height:8}}/>
+        <button className="btn-p" style={{marginBottom:9,fontSize:17,padding:"18px",letterSpacing:4}} onClick={()=>setScreen("game")}>LAUNCH</button>
+        <button className="btn-g" style={{marginBottom:8}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
+        <button className="btn-g" style={{background:"rgba(180,120,0,.08)",border:"1px solid rgba(255,180,0,.2)",color:"#ffd700"}} onClick={()=>setScreen("royalties")}>💎  Royalties <span style={{fontSize:9,background:"rgba(255,180,0,.15)",border:"1px solid rgba(255,180,0,.25)",borderRadius:6,padding:"2px 7px",marginLeft:6,letterSpacing:2}}>EARN ETH</span></button>
+        <div style={{height:12}}/>
       </div>
     </div>
   );
