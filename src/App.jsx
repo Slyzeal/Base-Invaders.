@@ -665,10 +665,11 @@ export default function App() {
   useEffect(() => { if (screen === "board") getOnchainLeaderboard().then(setLb); }, [screen]);
 
   return (
-    <div style={{ minHeight:"100vh", background:"#010108", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Exo 2','Courier New',sans-serif", padding:8 }}>
+    <div style={{ minHeight:"100vh", background:"#010108", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Exo 2','Courier New',sans-serif", padding:8, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
+        html,body{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch}
         @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes shimmer{0%{background-position:-300% center}100%{background-position:300% center}}
         @keyframes scan{0%{transform:translateY(-100%)}100%{transform:translateY(200%)}}
