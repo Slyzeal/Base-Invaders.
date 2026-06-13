@@ -737,7 +737,7 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
           </div>
         </div>
         <div style={{flex:1}}/>
-        <div style={{background:"rgba(0,10,40,.75)",backdropFilter:"blur(16px)",border:"1px solid rgba(0,80,200,.2)",borderRadius:16,padding:"14px 18px",marginBottom:14}}>
+        <div style={{background:"rgba(0,10,40,.75)",backdropFilter:"blur(16px)",border:"1px solid rgba(0,80,200,.2)",borderRadius:16,padding:"10px 18px",marginBottom:10}}>
           <div style={{fontSize:9,letterSpacing:4,color:"rgba(0,140,255,.5)",marginBottom:10,fontFamily:"'Rajdhani',sans-serif",fontWeight:700}}>HOW TO PLAY</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 12px"}}>
             {[["DRAG","Move ship"],["AUTO-FIRE","Shoots automatically"],["BLUE","x2 score"],["CYAN","Freeze enemies"],["RED","Laser beam"],["x10 KILLS","Next wave"]].map(([k,v])=>(
@@ -774,10 +774,10 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
             </div>
           </div>
         )}
-        <button className="btn-p" style={{marginBottom:9,fontSize:17,padding:"18px",letterSpacing:4}} onClick={()=>setScreen("game")}>LAUNCH</button>
-        <button className="btn-g" style={{marginBottom:8}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
-        <button className="btn-g" style={{background:"rgba(180,120,0,.08)",border:"1px solid rgba(255,180,0,.2)",color:"#ffd700"}} onClick={()=>setScreen("royalties")}>💎  Royalties <span style={{fontSize:9,background:"rgba(255,180,0,.15)",border:"1px solid rgba(255,180,0,.25)",borderRadius:6,padding:"2px 7px",marginLeft:6,letterSpacing:2}}>EARN ETH</span></button>
-        <div style={{height:12}}/>
+        <button className="btn-p" style={{marginBottom:7,fontSize:16,padding:"13px",letterSpacing:4}} onClick={()=>setScreen("game")}>LAUNCH</button>
+        <button className="btn-g" style={{marginBottom:6,padding:"10px 24px"}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
+        <button className="btn-g" style={{padding:"10px 24px",background:"rgba(180,120,0,.08)",border:"1px solid rgba(255,180,0,.2)",color:"#ffd700"}} onClick={()=>setScreen("royalties")}>💎  Royalties <span style={{fontSize:9,background:"rgba(255,180,0,.15)",border:"1px solid rgba(255,180,0,.25)",borderRadius:6,padding:"2px 7px",marginLeft:6,letterSpacing:2}}>EARN ETH</span></button>
+        <div style={{height:8}}/>
       </div>
     </div>
   );
