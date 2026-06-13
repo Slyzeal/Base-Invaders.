@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Contract addresses ────────────────────────────────────────────────────────
 const CONTRACT_ADDRESS     = "0xE791f436013AE7092eaE583e0d7c00Da1549fFE0"; // LeaderboardV4
+const SPLITTER_ADDRESS     = "0x67218423718abB90de4228593FE1155E2f8bf0F6"; // RoyaltySplitter
 const NFT_CONTRACT_ADDRESS = "0x93966cE7c8599069a7C39C816b8E8BcD05eF4d57"; // BaseBugsNFT
 const BASE_RPC = "https://mainnet.base.org";
 
@@ -162,6 +163,67 @@ async function resolveBasename(address) {
     }
   } catch {}
   domainCache[key] = null; return null;
+}
+
+// ── Royalties — read wallet points and claimable ETH ─────────────────────────
+async function getRoyaltyInfo(wallet) {
+  if (!wallet) return null;
+  try {
+    // getWalletPoints(address) — returns (points, common, rare, legendary, totalNFTs)
+    const addr = wallet.toLowerCase().replace("0x","").padStart(64,"0");
+    const [pointsRes, claimableRes, balanceRes] = await Promise.all([
+      fetch(BASE_RPC, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ jsonrpc:"2.0", id:1, method:"eth_call",
+          params:[{ to: SPLITTER_ADDRESS, data: "0xa0a938a0" + addr }, "latest"]
+        })
+      }),
+      fetch(BASE_RPC, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ jsonrpc:"2.0", id:2, method:"eth_call",
+          params:[{ to: SPLITTER_ADDRESS, data: "0x" + "402914f5" + addr }, "latest"]
+        })
+      }),
+      fetch(BASE_RPC, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ jsonrpc:"2.0", id:3, method:"eth_call",
+          params:[{ to: SPLITTER_ADDRESS, data: "0x8b7afe2e" }, "latest"]
+        })
+      }),
+    ]);
+
+    const pData = await pointsRes.json();
+    const cData = await claimableRes.json();
+    const bData = await balanceRes.json();
+
+    // Decode getWalletPoints: (points, common, rare, legendary, totalNFTs)
+    const pHex = pData?.result?.slice(2) || "";
+    const points      = pHex ? parseInt(pHex.slice(0,64),   16) : 0;
+    const commonCount = pHex ? parseInt(pHex.slice(64,128),  16) : 0;
+    const rareCount   = pHex ? parseInt(pHex.slice(128,192), 16) : 0;
+    const legendCount = pHex ? parseInt(pHex.slice(192,256), 16) : 0;
+    const totalNFTs   = pHex ? parseInt(pHex.slice(256,320), 16) : 0;
+
+    // Decode claimable: uint256 in wei
+    const cHex = cData?.result?.slice(2) || "";
+    const claimableWei = cHex ? BigInt("0x" + cHex) : 0n;
+    const claimableETH = Number(claimableWei) / 1e18;
+
+    // Decode contractBalance
+    const bHex = bData?.result?.slice(2) || "";
+    const balanceWei = bHex ? BigInt("0x" + bHex) : 0n;
+    const balanceETH = Number(balanceWei) / 1e18;
+
+    return { points, commonCount, rareCount, legendCount, totalNFTs, claimableETH, balanceETH, qualified: totalNFTs >= 10 };
+  } catch { return null; }
+}
+
+async function claimRoyalties(wallet) {
+  if (!window.ethereum) throw new Error("No wallet");
+  const accounts = await window.ethereum.request({ method:"eth_requestAccounts" });
+  // claim() selector
+  const txHash = await window.ethereum.request({
+    method:"eth_sendTransaction",
+    params:[{ from: accounts[0], to: SPLITTER_ADDRESS, data: "0x4e71d92d" }]
+  });
+  return txHash;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -629,6 +691,7 @@ export default function App() {
       {screen==="game"&&<GameScreen wallet={wallet} basename={basename} onGameOver={handleOver} musicOn={musicOn} toggleMusic={toggleMusic} setScreen={setScreen}/>}
       {screen==="over"&&<GameOverScreen score={finalScore} best={best} wallet={wallet} basename={basename} setScreen={setScreen} musicOn={musicOn} toggleMusic={toggleMusic}/>}
       {screen==="board"&&<BoardScreen lb={lb} wallet={wallet} setScreen={setScreen}/>}
+      {screen==="royalties"&&<RoyaltiesScreen wallet={wallet} setScreen={setScreen}/>}
     </div>
   );
 }
@@ -712,7 +775,8 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
           </div>
         )}
         <button className="btn-p" style={{marginBottom:9,fontSize:17,padding:"18px",letterSpacing:4}} onClick={()=>setScreen("game")}>LAUNCH</button>
-        <button className="btn-g" onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
+        <button className="btn-g" style={{marginBottom:8}} onClick={()=>setScreen("board")}>🏆  Leaderboard</button>
+        <button className="btn-g" style={{background:"rgba(180,120,0,.08)",border:"1px solid rgba(255,180,0,.2)",color:"#ffd700"}} onClick={()=>setScreen("royalties")}>💎  Royalties <span style={{fontSize:9,background:"rgba(255,180,0,.15)",border:"1px solid rgba(255,180,0,.25)",borderRadius:6,padding:"2px 7px",marginLeft:6,letterSpacing:2}}>EARN ETH</span></button>
         <div style={{height:12}}/>
       </div>
     </div>
@@ -903,12 +967,14 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
   const [nftMinted,setNftMinted]=useState(false);
   const [nftRarity,setNftRarity]=useState("");
   const [eligibleForNFT,setEligibleForNFT]=useState(false);
+  const [alreadyMinted,setAlreadyMinted]=useState(false);
 
   // Check NFT eligibility on mount
   useEffect(()=>{
     if(!wallet||score<4000)return;
     checkHasMintedNFT(wallet).then(hasMinted=>{
-      if(!hasMinted) setEligibleForNFT(true);
+      if(hasMinted){ setEligibleForNFT(false); setAlreadyMinted(true); }
+      else { setEligibleForNFT(true); setAlreadyMinted(false); }
     });
   },[wallet,score]);
 
@@ -927,10 +993,16 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
       // Check if NFT was minted (score >= 4000 and was eligible)
       if(score>=4000&&eligibleForNFT){
         setNftMinted(true);
-        // Determine rarity display (we don't know actual rarity from tx hash alone)
-        // Will show on OpenSea after tx confirms
         setNftRarity("check wallet");
+        // Mark as minted so future games show correct status
+        setEligibleForNFT(false);
       }
+      // Recheck onchain mint status after tx confirms
+      setTimeout(()=>{
+        checkHasMintedNFT(wallet).then(hasMinted=>{
+          if(hasMinted) setEligibleForNFT(false);
+        });
+      }, 3000);
     } catch(err) {
       const msg=err?.message||"";
       if(msg.includes("Score not higher")||msg.includes("ScoreNotHigher"))
@@ -970,6 +1042,17 @@ function GameOverScreen({score,best,wallet,basename,setScreen,musicOn,toggleMusi
             </div>
             <div style={{fontSize:9,color:"rgba(255,215,0,.5)",marginTop:4,fontFamily:"'Exo 2',sans-serif",letterSpacing:1}}>
               Commit your score to mint automatically
+            </div>
+          </div>
+        )}
+        {/* Already minted hint */}
+        {wallet&&!saved&&alreadyMinted&&score>=4000&&(
+          <div style={{marginBottom:12,background:"rgba(0,180,80,.08)",border:"1px solid rgba(0,255,100,.2)",borderRadius:12,padding:"10px 14px"}}>
+            <div style={{fontSize:12,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,letterSpacing:1}}>
+              ✅ Base Bugs NFT already in your wallet
+            </div>
+            <div style={{fontSize:9,color:"rgba(0,255,100,.45)",marginTop:4,fontFamily:"'Exo 2',sans-serif",letterSpacing:1}}>
+              One NFT per wallet — you&apos;re all set
             </div>
           </div>
         )}
@@ -1096,6 +1179,144 @@ function BoardScreen({lb,wallet,setScreen}) {
           <button className="btn-p" style={{fontSize:13,letterSpacing:2}} onClick={()=>setScreen("game")}>PLAY</button>
           <button className="btn-g" style={{maxWidth:110}} onClick={()=>setScreen("home")}>← Menu</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ROYALTIES SCREEN
+═══════════════════════════════════════════════════════════ */
+function RoyaltiesScreen({wallet,setScreen}) {
+  const [info,setInfo]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [claiming,setClaiming]=useState(false);
+  const [claimTx,setClaimTx]=useState(null);
+  const [claimErr,setClaimErr]=useState("");
+
+  useEffect(()=>{
+    if(!wallet){setLoading(false);return;}
+    getRoyaltyInfo(wallet).then(r=>{ setInfo(r); setLoading(false); });
+  },[wallet]);
+
+  const doClaim=async()=>{
+    setClaiming(true); setClaimErr("");
+    try {
+      const tx=await claimRoyalties(wallet);
+      setClaimTx(tx);
+      // Refresh after claim
+      setTimeout(()=>{ getRoyaltyInfo(wallet).then(setInfo); },3000);
+    } catch(e){
+      setClaimErr(e?.message||"Claim failed");
+    }
+    setClaiming(false);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px"}}>
+      <div style={{width:"100%",maxWidth:440,background:"rgba(0,8,32,.85)",border:"1px solid rgba(255,180,0,.15)",borderRadius:20,padding:"28px 22px",backdropFilter:"blur(12px)"}}>
+
+        {/* Header */}
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:28,marginBottom:6}}>💎</div>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:24,fontWeight:700,letterSpacing:6,color:"#ffd700"}}>ROYALTIES</div>
+          <div style={{fontSize:9,letterSpacing:3,color:"rgba(255,200,0,.35)",marginTop:4,fontFamily:"'Rajdhani',sans-serif"}}>2% OF ALL SECONDARY SALES · HOLD 10+ NFTS TO QUALIFY</div>
+        </div>
+
+        {!wallet&&(
+          <div style={{textAlign:"center",padding:"20px 0",color:"rgba(100,165,255,.5)",fontSize:12,letterSpacing:2,fontFamily:"'Rajdhani',sans-serif"}}>
+            Connect wallet to view royalties
+          </div>
+        )}
+
+        {wallet&&loading&&(
+          <div style={{textAlign:"center",padding:"20px 0",color:"rgba(255,200,0,.4)",fontSize:11,letterSpacing:3,fontFamily:"'Rajdhani',sans-serif"}}>
+            Loading...
+          </div>
+        )}
+
+        {wallet&&!loading&&info&&(
+          <>
+            {/* NFT Breakdown */}
+            <div style={{background:"rgba(0,20,60,.5)",border:"1px solid rgba(0,60,180,.15)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+              {[
+                {label:"COMMON",   count:info.commonCount, pts:info.commonCount*1,  color:"#88ccff"},
+                {label:"RARE",     count:info.rareCount,   pts:info.rareCount*2,    color:"#ffaa44"},
+                {label:"LEGENDARY",count:info.legendCount, pts:info.legendCount*5,  color:"#ffd700"},
+              ].map(({label,count,pts,color})=>(
+                <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid rgba(0,60,180,.1)"}}>
+                  <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:11,fontWeight:700,letterSpacing:2,color}}>{label}</span>
+                  <span style={{fontSize:10,color:"rgba(150,200,255,.5)"}}>{count} NFTs</span>
+                  <span style={{fontSize:10,color,fontFamily:"'Exo 2',sans-serif"}}>{pts} pts</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Points + Qualification */}
+            <div style={{background:"rgba(255,180,0,.06)",border:"1px solid rgba(255,180,0,.12)",borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:9,letterSpacing:3,color:"rgba(255,200,0,.45)",fontFamily:"'Rajdhani',sans-serif"}}>YOUR POINTS</div>
+                <div style={{fontSize:9,color:info.qualified?"rgba(0,255,100,.5)":"rgba(255,100,100,.5)",marginTop:3,fontFamily:"'Exo 2',sans-serif"}}>
+                  {info.totalNFTs} NFTs · {info.qualified?"✅ QUALIFIED":"❌ NEED "+(10-info.totalNFTs)+" MORE"}
+                </div>
+              </div>
+              <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:26,fontWeight:700,color:"#ffd700"}}>{info.points} pts</div>
+            </div>
+
+            {/* Contract Balance */}
+            <div style={{fontSize:9,color:"rgba(100,165,255,.35)",letterSpacing:2,textAlign:"center",marginBottom:10,fontFamily:"'Exo 2',sans-serif"}}>
+              CONTRACT BALANCE: {info.balanceETH.toFixed(6)} ETH
+            </div>
+
+            {/* Claimable */}
+            <div style={{background:"rgba(0,180,80,.06)",border:"1px solid rgba(0,255,100,.12)",borderRadius:12,padding:"16px",marginBottom:16,textAlign:"center"}}>
+              <div style={{fontSize:9,letterSpacing:4,color:"rgba(0,255,100,.4)",fontFamily:"'Rajdhani',sans-serif",marginBottom:6}}>CLAIMABLE</div>
+              <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:34,fontWeight:700,color:"#00ff88",lineHeight:1}}>
+                {info.claimableETH.toFixed(6)} ETH
+              </div>
+            </div>
+
+            {/* Claim button */}
+            {info.qualified&&info.claimableETH>0&&!claimTx&&(
+              <button onClick={doClaim} disabled={claiming} style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#1a6600,#33aa00)",border:"none",borderRadius:12,color:"#fff",fontFamily:"'Rajdhani',sans-serif",fontSize:16,fontWeight:700,letterSpacing:4,cursor:"pointer",boxShadow:"0 4px 24px rgba(50,180,0,.3)",marginBottom:10,opacity:claiming?.6:1}}>
+                {claiming?"CLAIMING...":"⚡ CLAIM ETH"}
+              </button>
+            )}
+
+            {!info.qualified&&(
+              <div style={{textAlign:"center",padding:"10px",background:"rgba(100,0,0,.1)",border:"1px solid rgba(200,50,50,.1)",borderRadius:10,marginBottom:10,fontSize:10,color:"rgba(255,100,100,.5)",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>
+                Hold 10+ NFTs to qualify for royalties
+              </div>
+            )}
+
+            {info.qualified&&info.claimableETH===0&&!claimTx&&(
+              <div style={{textAlign:"center",padding:"10px",background:"rgba(0,30,80,.4)",border:"1px solid rgba(0,80,200,.15)",borderRadius:10,marginBottom:10,fontSize:10,color:"rgba(100,165,255,.45)",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>
+                Nothing to claim yet — royalties accumulate with each sale
+              </div>
+            )}
+
+            {claimTx&&(
+              <div style={{textAlign:"center",padding:"12px",background:"rgba(0,180,80,.08)",border:"1px solid rgba(0,255,100,.15)",borderRadius:10,marginBottom:10}}>
+                <div style={{fontSize:12,color:"#00ff88",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,letterSpacing:2}}>✅ CLAIMED!</div>
+                <a href={`https://basescan.org/tx/${claimTx}`} target="_blank" rel="noreferrer" style={{fontSize:9,color:"rgba(0,255,100,.5)",letterSpacing:1}}>View on Basescan ↗</a>
+              </div>
+            )}
+
+            {claimErr&&(
+              <div style={{textAlign:"center",padding:"10px",background:"rgba(180,0,0,.1)",border:"1px solid rgba(255,50,50,.15)",borderRadius:10,marginBottom:10,fontSize:10,color:"rgba(255,100,100,.6)",fontFamily:"'Exo 2',sans-serif"}}>
+                {claimErr}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* How it works */}
+        <div style={{height:1,background:"linear-gradient(90deg,transparent,rgba(255,180,0,.1),transparent)",margin:"12px 0"}}/>
+        <div style={{fontSize:8,color:"rgba(255,200,0,.25)",letterSpacing:2,lineHeight:2,fontFamily:"'Exo 2',sans-serif",textAlign:"center"}}>
+          COMMON=1PT · RARE=2PTS · LEGENDARY=5PTS · MIN 10 NFTS
+        </div>
+
+        <button className="btn-g" style={{width:"100%",marginTop:14}} onClick={()=>setScreen("home")}>← BACK</button>
       </div>
     </div>
   );
