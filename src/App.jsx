@@ -665,11 +665,10 @@ export default function App() {
   useEffect(() => { if (screen === "board") getOnchainLeaderboard().then(setLb); }, [screen]);
 
   return (
-    <div style={{ minHeight:"100vh", background:"#010108", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Exo 2','Courier New',sans-serif", padding:"16px 8px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+    <div style={{ minHeight:"100vh", background:"#010108", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Exo 2','Courier New',sans-serif", padding:8 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        html,body{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch}
         @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         @keyframes shimmer{0%{background-position:-300% center}100%{background-position:300% center}}
         @keyframes scan{0%{transform:translateY(-100%)}100%{transform:translateY(200%)}}
@@ -1214,7 +1213,7 @@ function RoyaltiesScreen({wallet,setScreen}) {
   };
 
   return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px"}}>
       <div style={{width:"100%",maxWidth:440,background:"rgba(0,8,32,.85)",border:"1px solid rgba(255,180,0,.15)",borderRadius:20,padding:"28px 22px",backdropFilter:"blur(12px)"}}>
 
         {/* Header */}
