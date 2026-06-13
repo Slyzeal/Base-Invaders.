@@ -665,7 +665,7 @@ export default function App() {
   useEffect(() => { if (screen === "board") getOnchainLeaderboard().then(setLb); }, [screen]);
 
   return (
-    <div style={{ minHeight:"100vh", background:"#010108", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Exo 2','Courier New',sans-serif", padding:8, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+    <div style={{ minHeight:"100vh", background:"#010108", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Exo 2','Courier New',sans-serif", padding:"16px 8px", overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -1214,7 +1214,7 @@ function RoyaltiesScreen({wallet,setScreen}) {
   };
 
   return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px"}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
       <div style={{width:"100%",maxWidth:440,background:"rgba(0,8,32,.85)",border:"1px solid rgba(255,180,0,.15)",borderRadius:20,padding:"28px 22px",backdropFilter:"blur(12px)"}}>
 
         {/* Header */}
