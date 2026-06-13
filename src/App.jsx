@@ -717,13 +717,13 @@ function HomeScreen({wallet,basename,connect,connecting,walletError,best,setScre
   },[]);
 
   return(
-    <div className="sc" style={{position:"relative",width:W,borderRadius:22,overflow:"hidden",boxShadow:"0 0 100px rgba(0,50,190,.32),0 0 0 1px rgba(0,80,220,.15)"}}>
-      <canvas ref={cvs} width={W} height={H} style={{display:"block"}}/>
-      <div style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"hidden",borderRadius:22}}>
+    <div className="sc" style={{position:"relative",width:W,borderRadius:22,boxShadow:"0 0 100px rgba(0,50,190,.32),0 0 0 1px rgba(0,80,220,.15)"}}>
+      <canvas ref={cvs} width={W} height={H} style={{display:"block",position:"absolute",top:0,left:0,borderRadius:22}}/>
+      <div style={{position:"absolute",inset:0,pointerEvents:"none",borderRadius:22}}>
         <div style={{position:"absolute",left:0,right:0,height:2,background:"linear-gradient(90deg,transparent,rgba(0,160,255,.06),transparent)",animation:"scan 7s linear infinite"}}/>
         <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at center,transparent 55%,rgba(0,0,12,.7) 100%)"}}/>
       </div>
-      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",padding:"26px 26px"}}>
+      <div style={{position:"relative",minHeight:H,display:"flex",flexDirection:"column",padding:"26px 26px",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
           <button className="btn-ic" onClick={toggleMusic}>{musicOn?"🔊":"🔇"}</button>
         </div>
